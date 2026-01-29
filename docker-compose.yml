@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mikrom_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mikrom_db
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mikrom_network
+
+  adminer:
+    image: adminer:latest
+    container_name: mikrom_adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    networks:
+      - mikrom_network
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mikrom_app
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - mikrom_network
+
+volumes:
+  postgres_data:
+
+networks:
+  mikrom_network:
+    driver: bridge
