@@ -298,9 +298,9 @@ validate-pipeline:
   image: alpine:latest
   script:
     - echo "Pipeline configuration is valid"
-    - echo "Branch: $CI_COMMIT_BRANCH"
-    - echo "Commit: $CI_COMMIT_SHORT_SHA"
-    - echo "Pipeline source: $CI_PIPELINE_SOURCE"
+    - echo "Branch $CI_COMMIT_BRANCH"
+    - echo "Commit $CI_COMMIT_SHORT_SHA"
+    - echo "Pipeline source $CI_PIPELINE_SOURCE"
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
