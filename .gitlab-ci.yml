@@ -1,6 +1,10 @@
 # GitLab CI/CD Pipeline for Mikrom API
 # Python 3.14 FastAPI + PostgreSQL + Kubernetes
 
+# Default settings for all jobs
+default:
+  interruptible: true
+
 variables:
   # Python/UV configuration
   UV_CACHE_DIR: .cache/uv
@@ -30,6 +34,7 @@ variables:
 
 # Pipeline stages
 stages:
+  - .pre
   - validate
   - test
   - security
@@ -46,14 +51,52 @@ stages:
     paths:
       - .cache/uv
       - .venv/
+    policy: pull-push
+
+# Cache template for pull-only (read-only cache)
+.cache_pull: &cache_pull
+  cache:
+    key:
+      files:
+        - pyproject.toml
+        - uv.lock
+    paths:
+      - .cache/uv
+      - .venv/
+    policy: pull
 
 # Base job template for Python
 .python_base:
   image: ghcr.io/astral-sh/uv:python3.14-alpine
   before_script:
     - uv --version
-    - uv sync
-  <<: *cache_definition
+    - uv sync --frozen
+  <<: *cache_pull
+
+# ============================================================================
+# STAGE .PRE: Setup and Cache
+# ============================================================================
+
+setup-cache:
+  stage: .pre
+  image: ghcr.io/astral-sh/uv:python3.14-alpine
+  script:
+    - echo "Setting up dependencies cache..."
+    - uv --version
+    - uv sync --frozen
+    - echo "Cache populated successfully"
+  cache:
+    key:
+      files:
+        - pyproject.toml
+        - uv.lock
+    paths:
+      - .cache/uv
+      - .venv/
+    policy: pull-push
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # ============================================================================
 # STAGE 1: VALIDATE (Code Quality)
@@ -95,7 +138,7 @@ test:
     POSTGRES_PASSWORD: postgres
   before_script:
     - uv --version
-    - uv sync
+    - uv sync --frozen
     - echo "Waiting for PostgreSQL to be ready..."
     - apk add --no-cache postgresql-client
     - |
@@ -130,7 +173,14 @@ test:
 dependency-scanning:
   stage: security
   image: python:3.14-alpine
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    key: pip-safety
+    paths:
+      - .cache/pip
   before_script:
+    - pip install --upgrade pip
     - pip install safety
   script:
     - echo "Scanning dependencies for vulnerabilities..."
@@ -143,13 +193,10 @@ dependency-scanning:
 sast:
   stage: security
   extends: .python_base
-  before_script:
-    - uv sync
-    - uv pip install bandit
   script:
     - echo "Running SAST security analysis..."
-    - uv run bandit -r mikrom -f json -o bandit-report.json || true
-    - uv run bandit -r mikrom || true
+    - uv run --with bandit bandit -r mikrom -f json -o bandit-report.json || true
+    - uv run --with bandit bandit -r mikrom || true
   artifacts:
     paths:
       - bandit-report.json
@@ -168,11 +215,21 @@ build:
   image: docker:24-dind
   services:
     - docker:24-dind
+  variables:
+    DOCKER_BUILDKIT: "1"
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $IMAGE_NAME:latest || true
   script:
-    - echo "Building Docker image..."
-    - docker build --cache-from $IMAGE_NAME:latest --tag $IMAGE_NAME:$IMAGE_TAG --tag $IMAGE_NAME:$CI_COMMIT_REF_SLUG --tag $IMAGE_NAME:latest .
+    - echo "Building Docker image with BuildKit cache..."
+    - |
+      docker build \
+        --cache-from $IMAGE_NAME:latest \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --tag $IMAGE_NAME:$IMAGE_TAG \
+        --tag $IMAGE_NAME:$CI_COMMIT_REF_SLUG \
+        --tag $IMAGE_NAME:latest \
+        .
     - echo "Pushing Docker image to registry..."
     - docker push $IMAGE_NAME:$IMAGE_TAG
     - docker push $IMAGE_NAME:$CI_COMMIT_REF_SLUG
