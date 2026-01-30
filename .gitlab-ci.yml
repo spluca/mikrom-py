@@ -87,7 +87,7 @@ test:
   stage: test
   extends: .python_base
   services:
-    - name: postgres:16-alpine
+    - name: postgres:18-alpine
       alias: postgres
   variables:
     POSTGRES_DB: mikrom_test_db
