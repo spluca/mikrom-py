@@ -172,12 +172,7 @@ build:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - echo "Building Docker image..."
-    - docker build 
-        --cache-from $IMAGE_NAME:latest
-        --tag $IMAGE_NAME:$IMAGE_TAG
-        --tag $IMAGE_NAME:$CI_COMMIT_REF_SLUG
-        --tag $IMAGE_NAME:latest
-        .
+    - docker build --cache-from $IMAGE_NAME:latest --tag $IMAGE_NAME:$IMAGE_TAG --tag $IMAGE_NAME:$CI_COMMIT_REF_SLUG --tag $IMAGE_NAME:latest .
     - echo "Pushing Docker image to registry..."
     - docker push $IMAGE_NAME:$IMAGE_TAG
     - docker push $IMAGE_NAME:$CI_COMMIT_REF_SLUG
