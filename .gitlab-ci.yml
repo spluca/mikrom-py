@@ -178,7 +178,7 @@ build:
     - docker push $IMAGE_NAME:$CI_COMMIT_REF_SLUG
     - docker push $IMAGE_NAME:latest
     - echo "Docker image pushed successfully!"
-    - echo "Image: $IMAGE_NAME:$IMAGE_TAG"
+    - echo "Image $IMAGE_NAME:$IMAGE_TAG"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
