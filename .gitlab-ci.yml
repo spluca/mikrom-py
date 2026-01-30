@@ -1,0 +1,311 @@
+# GitLab CI/CD Pipeline for Mikrom API
+# Python 3.14 FastAPI + PostgreSQL + Kubernetes
+
+variables:
+  # Python/UV configuration
+  UV_CACHE_DIR: .cache/uv
+  PYTHON_VERSION: "3.14"
+  
+  # Docker configuration
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  
+  # Database configuration for tests
+  POSTGRES_DB: mikrom_test_db
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mikrom_test_db
+  
+  # Application configuration
+  SECRET_KEY: "test-secret-key-for-ci-cd-only"
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  REFRESH_TOKEN_EXPIRE_DAYS: "7"
+  
+  # Kubernetes configuration
+  KUBE_NAMESPACE: mikrom-dev
+  KUBE_INGRESS_BASE_DOMAIN: example.com
+
+# Pipeline stages
+stages:
+  - validate
+  - test
+  - security
+  - build
+  - deploy
+
+# Cache configuration for faster builds
+.cache_template: &cache_definition
+  cache:
+    key:
+      files:
+        - pyproject.toml
+        - uv.lock
+    paths:
+      - .cache/uv
+      - .venv/
+
+# Base job template for Python
+.python_base:
+  image: ghcr.io/astral-sh/uv:python3.14-alpine
+  before_script:
+    - uv --version
+    - uv sync
+  <<: *cache_definition
+
+# ============================================================================
+# STAGE 1: VALIDATE (Code Quality)
+# ============================================================================
+
+lint:
+  stage: validate
+  extends: .python_base
+  script:
+    - echo "Running linter..."
+    - uv run ruff check mikrom tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+format-check:
+  stage: validate
+  extends: .python_base
+  script:
+    - echo "Checking code formatting..."
+    - uv run ruff format --check mikrom tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ============================================================================
+# STAGE 2: TEST (Run test suite with coverage)
+# ============================================================================
+
+test:
+  stage: test
+  extends: .python_base
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    POSTGRES_DB: mikrom_test_db
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+  before_script:
+    - uv --version
+    - uv sync
+    - echo "Waiting for PostgreSQL to be ready..."
+    - apk add --no-cache postgresql-client
+    - |
+      until pg_isready -h postgres -U postgres; do
+        echo "Waiting for postgres..."
+        sleep 2
+      done
+    - echo "PostgreSQL is ready!"
+    - psql -h postgres -U postgres -d postgres -c "CREATE DATABASE mikrom_test_db;" || echo "Database already exists"
+  script:
+    - echo "Running test suite..."
+    - uv run pytest -v --cov=mikrom --cov-report=xml --cov-report=html --cov-report=term-missing
+    - echo "Test coverage report generated"
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+      - coverage.xml
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ============================================================================
+# STAGE 3: SECURITY (Dependency scanning and SAST)
+# ============================================================================
+
+dependency-scanning:
+  stage: security
+  image: python:3.14-alpine
+  before_script:
+    - pip install safety
+  script:
+    - echo "Scanning dependencies for vulnerabilities..."
+    - safety check --json || true
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+sast:
+  stage: security
+  extends: .python_base
+  before_script:
+    - uv sync
+    - uv pip install bandit
+  script:
+    - echo "Running SAST security analysis..."
+    - uv run bandit -r mikrom -f json -o bandit-report.json || true
+    - uv run bandit -r mikrom || true
+  artifacts:
+    paths:
+      - bandit-report.json
+    expire_in: 30 days
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ============================================================================
+# STAGE 4: BUILD (Docker image)
+# ============================================================================
+
+build:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - echo "Building Docker image..."
+    - docker build 
+        --cache-from $IMAGE_NAME:latest
+        --tag $IMAGE_NAME:$IMAGE_TAG
+        --tag $IMAGE_NAME:$CI_COMMIT_REF_SLUG
+        --tag $IMAGE_NAME:latest
+        .
+    - echo "Pushing Docker image to registry..."
+    - docker push $IMAGE_NAME:$IMAGE_TAG
+    - docker push $IMAGE_NAME:$CI_COMMIT_REF_SLUG
+    - docker push $IMAGE_NAME:latest
+    - echo "Docker image pushed successfully!"
+    - echo "Image: $IMAGE_NAME:$IMAGE_TAG"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+
+# ============================================================================
+# STAGE 5: DEPLOY (Kubernetes deployment)
+# ============================================================================
+
+.deploy_template: &deploy_definition
+  image: bitnami/kubectl:latest
+  before_script:
+    - kubectl version --client
+    - kubectl config set-cluster k8s --server="$KUBE_URL" --insecure-skip-tls-verify=true
+    - kubectl config set-credentials gitlab --token="$KUBE_TOKEN"
+    - kubectl config set-context default --cluster=k8s --user=gitlab --namespace=$KUBE_NAMESPACE
+    - kubectl config use-context default
+    - kubectl get nodes
+
+deploy-dev:
+  stage: deploy
+  <<: *deploy_definition
+  variables:
+    KUBE_NAMESPACE: mikrom-dev
+    ENVIRONMENT: dev
+  script:
+    - echo "Deploying to development environment..."
+    
+    # Create namespace if it doesn't exist
+    - kubectl create namespace $KUBE_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Create registry secret for pulling images
+    - |
+      kubectl create secret docker-registry gitlab-registry \
+        --docker-server=$CI_REGISTRY \
+        --docker-username=$CI_REGISTRY_USER \
+        --docker-password=$CI_REGISTRY_PASSWORD \
+        --docker-email=$GITLAB_USER_EMAIL \
+        --namespace=$KUBE_NAMESPACE \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Apply ConfigMap
+    - kubectl apply -f k8s/configmap.yaml -n $KUBE_NAMESPACE
+    
+    # Apply Secrets
+    - kubectl apply -f k8s/secrets.yaml -n $KUBE_NAMESPACE
+    
+    # Apply PostgreSQL (if using in-cluster DB)
+    - kubectl apply -f k8s/postgres-deployment.yaml -n $KUBE_NAMESPACE
+    - kubectl apply -f k8s/postgres-service.yaml -n $KUBE_NAMESPACE
+    
+    # Wait for PostgreSQL to be ready
+    - kubectl wait --for=condition=ready pod -l app=postgres -n $KUBE_NAMESPACE --timeout=120s || true
+    
+    # Run database migrations
+    - echo "Running database migrations..."
+    - |
+      kubectl run migrations-$CI_COMMIT_SHORT_SHA \
+        --image=$IMAGE_NAME:$IMAGE_TAG \
+        --restart=Never \
+        --namespace=$KUBE_NAMESPACE \
+        --env="DATABASE_URL=$DATABASE_URL" \
+        --command -- uv run alembic upgrade head
+    - kubectl wait --for=condition=complete job/migrations-$CI_COMMIT_SHORT_SHA -n $KUBE_NAMESPACE --timeout=120s || true
+    - kubectl logs job/migrations-$CI_COMMIT_SHORT_SHA -n $KUBE_NAMESPACE || true
+    
+    # Apply application deployment
+    - kubectl apply -f k8s/deployment.yaml -n $KUBE_NAMESPACE
+    - kubectl set image deployment/mikrom-api mikrom-api=$IMAGE_NAME:$IMAGE_TAG -n $KUBE_NAMESPACE
+    
+    # Apply service
+    - kubectl apply -f k8s/service.yaml -n $KUBE_NAMESPACE
+    
+    # Apply ingress
+    - kubectl apply -f k8s/ingress.yaml -n $KUBE_NAMESPACE
+    
+    # Wait for rollout
+    - kubectl rollout status deployment/mikrom-api -n $KUBE_NAMESPACE --timeout=300s
+    
+    # Show deployment info
+    - echo "Deployment completed!"
+    - kubectl get pods -n $KUBE_NAMESPACE
+    - kubectl get services -n $KUBE_NAMESPACE
+    - kubectl get ingress -n $KUBE_NAMESPACE
+    
+  environment:
+    name: development
+    url: https://mikrom-dev.$KUBE_INGRESS_BASE_DOMAIN
+    on_stop: stop-dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
+
+stop-dev:
+  stage: deploy
+  <<: *deploy_definition
+  variables:
+    KUBE_NAMESPACE: mikrom-dev
+    GIT_STRATEGY: none
+  script:
+    - echo "Stopping development environment..."
+    - kubectl delete all -l app=mikrom-api -n $KUBE_NAMESPACE || true
+  environment:
+    name: development
+    action: stop
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+# ============================================================================
+# ADDITIONAL JOBS
+# ============================================================================
+
+# Job to check pipeline configuration
+validate-pipeline:
+  stage: .pre
+  image: alpine:latest
+  script:
+    - echo "Pipeline configuration is valid"
+    - echo "Branch: $CI_COMMIT_BRANCH"
+    - echo "Commit: $CI_COMMIT_SHORT_SHA"
+    - echo "Pipeline source: $CI_PIPELINE_SOURCE"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

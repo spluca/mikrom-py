@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mikrom-config
+  namespace: mikrom-dev
+data:
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  REFRESH_TOKEN_EXPIRE_DAYS: "7"
+  DEBUG: "False"
+  ENVIRONMENT: "development"
+  LOG_LEVEL: "INFO"

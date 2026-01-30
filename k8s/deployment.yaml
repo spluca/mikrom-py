@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mikrom-api
+  namespace: mikrom-dev
+  labels:
+    app: mikrom-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mikrom-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: mikrom-api
+        version: v1
+    spec:
+      imagePullSecrets:
+      - name: gitlab-registry
+      containers:
+      - name: mikrom-api
+        image: registry.gitlab.com/your-group/mikrom-py:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        # Environment variables from ConfigMap
+        - name: ALGORITHM
+          valueFrom:
+            configMapKeyRef:
+              name: mikrom-config
+              key: ALGORITHM
+        - name: ACCESS_TOKEN_EXPIRE_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: mikrom-config
+              key: ACCESS_TOKEN_EXPIRE_MINUTES
+        - name: REFRESH_TOKEN_EXPIRE_DAYS
+          valueFrom:
+            configMapKeyRef:
+              name: mikrom-config
+              key: REFRESH_TOKEN_EXPIRE_DAYS
+        - name: DEBUG
+          valueFrom:
+            configMapKeyRef:
+              name: mikrom-config
+              key: DEBUG
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: mikrom-config
+              key: ENVIRONMENT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: mikrom-config
+              key: LOG_LEVEL
+        # Secrets
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mikrom-secrets
+              key: SECRET_KEY
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mikrom-secrets
+              key: DATABASE_URL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8000
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
