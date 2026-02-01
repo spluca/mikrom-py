@@ -3,7 +3,9 @@
 import httpx
 from typing import Optional
 from mikrom.config import settings
-from mikrom.utils.logger import logger
+from mikrom.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class IPPoolError(Exception):
