@@ -393,5 +393,155 @@ Si encuentras problemas:
 
 ---
 
+## Cleanup and Management Scripts
+
+### `delete_orphan_vm.py` - Delete Orphan Firecracker VM
+
+Deletes an orphan Firecracker VM that exists on a remote host but is not registered in the mikrom-py database.
+
+#### Usage
+
+```bash
+uv run python scripts/delete_orphan_vm.py
+```
+
+#### What it does
+
+- Prompts for VM ID to delete
+- Uses the FirecrackerClient API to call the Ansible `cleanup-vm.yml` playbook
+- Stops the Firecracker process (if running)
+- Removes jail directory: `/srv/jailer/firecracker/{vm_id}`
+- Releases IP from IP Pool
+- Removes TAP network device
+- Removes VM logs
+
+#### Known Issues
+
+- May timeout (120s) if the VM is already stopped, as the playbook attempts to send a graceful shutdown to a non-existent API socket
+- Manual cleanup may be faster for already-stopped VMs
+
+---
+
+### `check_firecracker_status.py` - Check Firecracker VM Status
+
+Checks the status of Firecracker VMs on a remote host.
+
+#### Usage
+
+```bash
+uv run python scripts/check_firecracker_status.py
+```
+
+#### What it does
+
+- Lists all jail directories on the remote host
+- Shows running Firecracker processes
+- Lists TAP network devices
+- Useful for verification after cleanup
+
+---
+
+### `cleanup_firecracker_dirs.py` - Cleanup Local Artifact Directories
+
+Cleans up leftover Firecracker VM artifact directories from the local `firecracker-deploy/artifacts/` directory.
+
+#### Usage
+
+```bash
+uv run python scripts/cleanup_firecracker_dirs.py
+```
+
+#### What it does
+
+- Scans the `firecracker-deploy/artifacts/` directory for orphan VM directories
+- Displays count of directories found
+- Removes all artifact directories (from ansible-runner executions)
+- Shows summary of cleanup
+
+**Safe to run:** This only removes local artifact directories from ansible-runner, not actual VMs.
+
+---
+
+## Manual Cleanup Commands
+
+For faster cleanup of already-stopped VMs, you can use these manual commands:
+
+### Check VM Status
+
+```bash
+# List jail directories
+ssh root@192.168.123.215 "ls -la /srv/jailer/firecracker/"
+
+# Check running processes
+ssh root@192.168.123.215 "ps aux | grep firecracker | grep -v grep"
+
+# Check TAP devices
+ssh root@192.168.123.215 "ip link show | grep tap"
+
+# Check IP Pool assignments
+curl -s http://192.168.123.1:8090/api/v1/assignments | python3 -m json.tool
+```
+
+### Manual Cleanup
+
+```bash
+# Remove jail directory
+ssh root@192.168.123.215 "rm -rf /srv/jailer/firecracker/{vm_id}"
+
+# Remove TAP device
+ssh root@192.168.123.215 "ip link delete tap-{short_id}"
+
+# Remove logs
+ssh root@192.168.123.215 "rm -f /tmp/firecracker-{vm_id}.log"
+
+# Release IP from pool
+curl -X DELETE http://192.168.123.1:8090/api/v1/ip/release/{vm_id}
+```
+
+---
+
+## Common Orphan VM Scenarios
+
+### Scenario 1: VM exists on remote host but not in database
+
+This happens when:
+- A VM was created but the database transaction failed
+- The database was reset/cleaned but VMs were not stopped
+- Manual testing left VMs running
+
+**Solution:** Use `delete_orphan_vm.py` or manual cleanup commands above
+
+### Scenario 2: Local artifact directories accumulating
+
+The `firecracker-deploy/artifacts/` directory contains ansible-runner execution artifacts. These accumulate over time.
+
+**Solution:** Use `cleanup_firecracker_dirs.py` to remove them
+
+### Scenario 3: Need to verify cleanup was successful
+
+After cleanup, you want to ensure all resources were removed.
+
+**Solution:** Use `check_firecracker_status.py` to verify, or use manual check commands above
+
+---
+
+## Safety Notes
+
+1. **These scripts modify production resources** - Always verify the VM ID before deletion
+2. **No undo** - Once deleted, VM data cannot be recovered
+3. **Database not modified** - These scripts only clean remote resources, not database entries
+4. **IP Pool** - IPs are released automatically by the Ansible playbook
+5. **TAP devices** - Automatically removed, but check if any orphans remain
+
+---
+
+## Related Playbooks
+
+- `firecracker-deploy/cleanup-vm.yml` - Ansible playbook for VM cleanup
+- `firecracker-deploy/roles/vm_mgmt/tasks/cleanup_vm.yml` - Cleanup tasks
+- `firecracker-deploy/roles/vm_mgmt/tasks/stop_vm.yml` - Stop VM tasks
+
+---
+
 **Última actualización:** Febrero 2025  
 **Mantenedor:** Mikrom Platform Team

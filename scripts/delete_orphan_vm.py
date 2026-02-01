@@ -1,0 +1,120 @@
+"""Delete orphan Firecracker VM using mikrom-py FirecrackerClient."""
+
+import asyncio
+import subprocess
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import mikrom
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from mikrom.clients.firecracker import FirecrackerClient, FirecrackerError
+from mikrom.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+VM_ID = "srv-c1c695b0"
+HOST = "firecracker-01"
+HOST_IP = "192.168.123.215"
+
+
+async def check_vm_process(vm_id: str, host_ip: str) -> bool:
+    """Check if VM process is running on remote host."""
+    try:
+        result = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "ConnectTimeout=5",
+                f"root@{host_ip}",
+                f"ps aux | grep '/firecracker ' | grep '{vm_id}' | grep -v grep",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0 and vm_id in result.stdout
+    except Exception as e:
+        logger.error(f"Error checking VM process: {e}")
+        return False
+
+
+async def main():
+    """Delete orphan VM."""
+    print("=" * 70)
+    print("ELIMINACIÓN DE VM HUÉRFANA DE FIRECRACKER")
+    print("=" * 70)
+
+    print(f"\n📋 Información de la VM:")
+    print(f"   ID: {VM_ID}")
+    print(f"   Host: {HOST} ({HOST_IP})")
+
+    # Check if VM is running
+    print(f"\n🔍 Verificando si la VM está corriendo...")
+    is_running = await check_vm_process(VM_ID, HOST_IP)
+
+    if is_running:
+        print(f"   ✓ VM encontrada corriendo en el host")
+    else:
+        print(f"   ⚠️  VM no encontrada corriendo (puede estar ya detenida)")
+        response = input("\n¿Continuar con la limpieza de recursos? (s/n): ")
+        if response.lower() != "s":
+            print("Operación cancelada")
+            return
+
+    # Initialize FirecrackerClient
+    print(f"\n🔧 Inicializando FirecrackerClient...")
+    try:
+        client = FirecrackerClient()
+        print(f"   ✓ Cliente inicializado")
+        print(f"   ✓ Deploy path: {client.deploy_path}")
+    except FirecrackerError as e:
+        print(f"   ✗ Error: {e}")
+        return
+
+    # Delete VM
+    print(f"\n🗑️  Ejecutando cleanup de VM...")
+    print(f"   Esto incluirá:")
+    print(f"   - Detener proceso de Firecracker")
+    print(f"   - Eliminar directorio jail")
+    print(f"   - Eliminar dispositivo TAP")
+    print(f"   - Liberar IP del pool (si existe)")
+    print(f"   - Eliminar logs")
+
+    try:
+        result = await client.cleanup_vm(vm_id=VM_ID, limit=HOST)
+
+        print(f"\n✅ Cleanup completado exitosamente!")
+        print(f"   Status: {result['status']}")
+        print(f"   Return code: {result['rc']}")
+        print(f"   Stats: {result['stats']}")
+
+    except FirecrackerError as e:
+        print(f"\n❌ Error durante el cleanup:")
+        print(f"   {e}")
+        return
+
+    # Verify VM is stopped
+    print(f"\n🔍 Verificando que la VM fue detenida...")
+    is_still_running = await check_vm_process(VM_ID, HOST_IP)
+
+    if is_still_running:
+        print(f"   ⚠️  La VM aún parece estar corriendo")
+        print(f"   Puede ser necesario forzar la terminación del proceso")
+    else:
+        print(f"   ✓ VM detenida correctamente")
+
+    # Summary
+    print(f"\n" + "=" * 70)
+    print("RESUMEN")
+    print("=" * 70)
+    print(f"  VM ID: {VM_ID}")
+    print(f"  Host: {HOST}")
+    print(
+        f"  Estado: {'ELIMINADA' if not is_still_running else 'ERROR - AÚN CORRIENDO'}"
+    )
+    print(f"\n✅ La VM huérfana ha sido limpiada del sistema")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -136,16 +136,28 @@ test:
     POSTGRES_DB: mikrom_test_db
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
+    # Use tmpfs for PostgreSQL data directory to reduce disk I/O
+    POSTGRES_HOST_AUTH_METHOD: trust
+    PGDATA: /dev/shm/postgres
   before_script:
     - uv --version
     - uv sync --frozen
     - echo "Waiting for PostgreSQL to be ready..."
     - apk add --no-cache postgresql-client
     - |
-      until pg_isready -h postgres -U postgres; do
-        echo "Waiting for postgres..."
+      MAX_RETRIES=30
+      RETRY_COUNT=0
+      until pg_isready -h postgres -U postgres || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+        echo "Waiting for postgres... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+        RETRY_COUNT=$((RETRY_COUNT + 1))
         sleep 2
       done
+    - |
+      if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+        echo "ERROR: PostgreSQL failed to start after $MAX_RETRIES attempts"
+        echo "This usually indicates disk space issues on the runner"
+        exit 1
+      fi
     - echo "PostgreSQL is ready!"
     - psql -h postgres -U postgres -d postgres -c "CREATE DATABASE mikrom_test_db;" || echo "Database already exists"
   script:
