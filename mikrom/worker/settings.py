@@ -2,7 +2,13 @@
 
 from arq.connections import RedisSettings
 from mikrom.config import settings
-from mikrom.worker.tasks import create_vm_task, delete_vm_task
+from mikrom.worker.tasks import (
+    create_vm_task,
+    delete_vm_task,
+    stop_vm_task,
+    start_vm_task,
+    restart_vm_task,
+)
 
 
 def get_redis_settings() -> RedisSettings:
@@ -43,7 +49,13 @@ class WorkerSettings:
     redis_settings = get_redis_settings()
     queue_name = settings.ARQ_QUEUE_NAME
 
-    functions = [create_vm_task, delete_vm_task]
+    functions = [
+        create_vm_task,
+        delete_vm_task,
+        stop_vm_task,
+        start_vm_task,
+        restart_vm_task,
+    ]
 
     # Worker settings
     max_jobs = 10

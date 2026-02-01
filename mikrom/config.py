@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     ARQ_QUEUE_NAME: str = "mikrom:queue"
 
     # IP Pool configuration
-    IPPOOL_API_URL: str = "http://localhost:8080"
+    IPPOOL_API_URL: str = "http://localhost:8090"
 
     # Firecracker configuration
     FIRECRACKER_DEPLOY_PATH: str = "/path/to/firecracker-deploy"

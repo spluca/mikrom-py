@@ -16,8 +16,11 @@ class VMStatus(str, Enum):
 
     PENDING = "pending"
     PROVISIONING = "provisioning"
+    STARTING = "starting"
     RUNNING = "running"
+    STOPPING = "stopping"
     STOPPED = "stopped"
+    RESTARTING = "restarting"
     ERROR = "error"
     DELETING = "deleting"
 

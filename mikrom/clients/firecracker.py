@@ -89,6 +89,7 @@ class FirecrackerClient:
                         limit=limit,
                         quiet=False,
                         verbosity=0,
+                        timeout=180,  # 3 minutes timeout
                     )
 
                 if runner.status != "successful":

@@ -251,3 +251,134 @@ class VMService:
         """Close service resources."""
         if self._redis:
             await self._redis.close()
+
+    async def stop_vm(self, session: AsyncSession, vm: VM) -> None:
+        """
+        Stop a VM (queues background task).
+
+        Args:
+            session: Database session
+            vm: VM to stop
+        """
+        with tracer.start_as_current_span("service.vm.stop") as _span:
+            add_span_attributes(**{"vm.id": vm.vm_id, "vm.db_id": vm.id})
+
+            logger.info("Queueing VM stop", extra={"vm_id": vm.vm_id})
+
+            # Update status to stopping
+            with tracer.start_as_current_span("service.vm.stop.update_status"):
+                vm.status = VMStatus.STOPPING
+                session.add(vm)
+                await session.commit()
+
+                logger.info("VM status updated to stopping", extra={"vm_id": vm.vm_id})
+
+            # Queue background task
+            with tracer.start_as_current_span("service.vm.stop.queue_job"):
+                redis = await self.get_redis_pool()
+                job = await redis.enqueue_job(
+                    "stop_vm_task",
+                    vm.id,
+                    vm.vm_id,
+                    vm.host,
+                )
+
+                if job:
+                    logger.info(
+                        "VM stop job queued",
+                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
+                    )
+                else:
+                    logger.warning(
+                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
+                    )
+
+    async def start_vm(self, session: AsyncSession, vm: VM) -> None:
+        """
+        Start a VM (queues background task).
+
+        Args:
+            session: Database session
+            vm: VM to start
+        """
+        with tracer.start_as_current_span("service.vm.start") as _span:
+            add_span_attributes(**{"vm.id": vm.vm_id, "vm.db_id": vm.id})
+
+            logger.info("Queueing VM start", extra={"vm_id": vm.vm_id})
+
+            # Update status to starting
+            with tracer.start_as_current_span("service.vm.start.update_status"):
+                vm.status = VMStatus.STARTING
+                session.add(vm)
+                await session.commit()
+
+                logger.info("VM status updated to starting", extra={"vm_id": vm.vm_id})
+
+            # Queue background task
+            with tracer.start_as_current_span("service.vm.start.queue_job"):
+                redis = await self.get_redis_pool()
+                job = await redis.enqueue_job(
+                    "start_vm_task",
+                    vm.id,
+                    vm.vm_id,
+                    vm.vcpu_count,
+                    vm.memory_mb,
+                    vm.kernel_path,
+                    vm.host,
+                )
+
+                if job:
+                    logger.info(
+                        "VM start job queued",
+                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
+                    )
+                else:
+                    logger.warning(
+                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
+                    )
+
+    async def restart_vm(self, session: AsyncSession, vm: VM) -> None:
+        """
+        Restart a VM (queues stop then start tasks).
+
+        Args:
+            session: Database session
+            vm: VM to restart
+        """
+        with tracer.start_as_current_span("service.vm.restart") as _span:
+            add_span_attributes(**{"vm.id": vm.vm_id, "vm.db_id": vm.id})
+
+            logger.info("Queueing VM restart", extra={"vm_id": vm.vm_id})
+
+            # Update status to restarting
+            with tracer.start_as_current_span("service.vm.restart.update_status"):
+                vm.status = VMStatus.RESTARTING
+                session.add(vm)
+                await session.commit()
+
+                logger.info(
+                    "VM status updated to restarting", extra={"vm_id": vm.vm_id}
+                )
+
+            # Queue restart task (will stop then start)
+            with tracer.start_as_current_span("service.vm.restart.queue_job"):
+                redis = await self.get_redis_pool()
+                job = await redis.enqueue_job(
+                    "restart_vm_task",
+                    vm.id,
+                    vm.vm_id,
+                    vm.vcpu_count,
+                    vm.memory_mb,
+                    vm.kernel_path,
+                    vm.host,
+                )
+
+                if job:
+                    logger.info(
+                        "VM restart job queued",
+                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
+                    )
+                else:
+                    logger.warning(
+                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
+                    )

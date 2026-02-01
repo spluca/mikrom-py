@@ -30,7 +30,7 @@ def get_vm_service():
 
 
 @router.post(
-    "/",
+    "",
     response_model=VMResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new VM",
@@ -110,7 +110,7 @@ async def create_vm(
 
 
 @router.get(
-    "/",
+    "",
     response_model=VMListResponse,
     summary="List VMs",
     description="List all VMs owned by the current user (superusers see all VMs).",
@@ -243,4 +243,146 @@ async def delete_vm(
             "message": "VM deletion queued",
             "vm_id": vm.vm_id,
             "status": "deleting",
+        }
+
+@router.post(
+    "/{vm_id}/stop",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Stop VM",
+    description="Stop a running VM. The operation will be performed asynchronously.",
+)
+async def stop_vm(
+    vm_id: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    vm_service: Annotated[VMService, Depends(get_vm_service)],
+):
+    """Stop a VM."""
+    with tracer.start_as_current_span("api.vm.stop") as _span:
+        set_context(action="vm.stop", vm_id=vm_id)
+        add_span_attributes(**{"vm.id": vm_id, "user.id": current_user.id})
+
+        logger.info("Stopping VM", extra={"vm_id": vm_id})
+
+        vm = await vm_service.get_vm_by_id(session, vm_id, current_user)
+
+        if not vm:
+            logger.warning("VM not found", extra={"vm_id": vm_id})
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="VM not found"
+            )
+
+        if vm.status != VMStatus.RUNNING:
+            logger.warning(
+                "VM not in running state",
+                extra={"vm_id": vm_id, "status": vm.status},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"VM is not running (current status: {vm.status})",
+            )
+
+        await vm_service.stop_vm(session, vm)
+
+        logger.info("VM stop queued", extra={"vm_id": vm_id})
+
+        return {
+            "message": "VM stop queued",
+            "vm_id": vm.vm_id,
+            "status": "stopping",
+        }
+
+
+@router.post(
+    "/{vm_id}/start",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Start VM",
+    description="Start a stopped VM. The operation will be performed asynchronously.",
+)
+async def start_vm(
+    vm_id: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    vm_service: Annotated[VMService, Depends(get_vm_service)],
+):
+    """Start a VM."""
+    with tracer.start_as_current_span("api.vm.start") as _span:
+        set_context(action="vm.start", vm_id=vm_id)
+        add_span_attributes(**{"vm.id": vm_id, "user.id": current_user.id})
+
+        logger.info("Starting VM", extra={"vm_id": vm_id})
+
+        vm = await vm_service.get_vm_by_id(session, vm_id, current_user)
+
+        if not vm:
+            logger.warning("VM not found", extra={"vm_id": vm_id})
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="VM not found"
+            )
+
+        if vm.status not in [VMStatus.STOPPED, VMStatus.ERROR]:
+            logger.warning(
+                "VM not in stopped/error state",
+                extra={"vm_id": vm_id, "status": vm.status},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"VM cannot be started (current status: {vm.status})",
+            )
+
+        await vm_service.start_vm(session, vm)
+
+        logger.info("VM start queued", extra={"vm_id": vm_id})
+
+        return {
+            "message": "VM start queued",
+            "vm_id": vm.vm_id,
+            "status": "starting",
+        }
+
+
+@router.post(
+    "/{vm_id}/restart",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Restart VM",
+    description="Restart a running VM. The operation will be performed asynchronously.",
+)
+async def restart_vm(
+    vm_id: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    vm_service: Annotated[VMService, Depends(get_vm_service)],
+):
+    """Restart a VM."""
+    with tracer.start_as_current_span("api.vm.restart") as _span:
+        set_context(action="vm.restart", vm_id=vm_id)
+        add_span_attributes(**{"vm.id": vm_id, "user.id": current_user.id})
+
+        logger.info("Restarting VM", extra={"vm_id": vm_id})
+
+        vm = await vm_service.get_vm_by_id(session, vm_id, current_user)
+
+        if not vm:
+            logger.warning("VM not found", extra={"vm_id": vm_id})
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="VM not found"
+            )
+
+        if vm.status != VMStatus.RUNNING:
+            logger.warning(
+                "VM not running", extra={"vm_id": vm_id, "status": vm.status}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"VM is not running (current status: {vm.status})",
+            )
+
+        await vm_service.restart_vm(session, vm)
+
+        logger.info("VM restart queued", extra={"vm_id": vm_id})
+
+        return {
+            "message": "VM restart queued",
+            "vm_id": vm.vm_id,
+            "status": "restarting",
         }
