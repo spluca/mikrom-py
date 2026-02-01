@@ -1,10 +1,12 @@
 """Pytest configuration and fixtures."""
 
 from typing import AsyncGenerator
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlmodel import SQLModel
+from opentelemetry import trace
 
 from mikrom.main import app
 from mikrom.api.deps import get_db
@@ -106,3 +108,27 @@ async def test_vm(db_session: AsyncSession, test_user: User) -> VM:
     await db_session.commit()
     await db_session.refresh(vm)
     return vm
+
+
+@pytest.fixture(scope="session", autouse=True)
+def shutdown_tracer_provider():
+    """Shutdown OpenTelemetry TracerProvider after all tests complete.
+
+    This fixture ensures that the BatchSpanProcessor's background thread
+    is properly shut down before pytest closes stdout/stderr, preventing
+    "I/O operation on closed file" errors.
+    """
+    yield
+
+    # Force shutdown of the tracer provider after all tests
+    try:
+        tracer_provider = trace.get_tracer_provider()
+        if hasattr(tracer_provider, "force_flush"):
+            # Flush pending spans first
+            tracer_provider.force_flush(timeout_millis=5000)
+        if hasattr(tracer_provider, "shutdown"):
+            # Then shutdown the provider
+            tracer_provider.shutdown()
+    except Exception:
+        # Ignore any errors during shutdown
+        pass
