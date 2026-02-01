@@ -10,6 +10,7 @@ from arq.connections import ArqRedis
 from mikrom.models import VM, User, VMStatus
 from mikrom.config import settings
 from mikrom.utils.logger import get_logger
+from mikrom.worker.settings import get_redis_settings
 
 logger = get_logger(__name__)
 
@@ -24,11 +25,7 @@ class VMService:
     async def get_redis_pool(self) -> ArqRedis:
         """Get or create Redis pool for arq."""
         if self._redis is None:
-            self._redis = await create_pool(
-                settings.REDIS_URL,
-                job_timeout=300,
-                keep_result=3600,
-            )
+            self._redis = await create_pool(get_redis_settings())
         return self._redis
 
     def generate_vm_id(self) -> str:

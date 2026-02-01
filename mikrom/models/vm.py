@@ -2,6 +2,7 @@
 
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
+from sqlalchemy import Column, String
 from sqlmodel import Field, Relationship
 
 from mikrom.models.base import TimestampModel
@@ -73,7 +74,7 @@ class VM(TimestampModel, table=True):
     # State
     status: VMStatus = Field(
         default=VMStatus.PENDING,
-        max_length=20,
+        sa_column=Column(String(20), nullable=False),
         description="VM status: pending, provisioning, running, stopped, error, deleting",
     )
     error_message: Optional[str] = Field(
