@@ -15,8 +15,11 @@ from mikrom.schemas.vm import (
 )
 from mikrom.services.vm_service import VMService
 from mikrom.utils.logger import get_logger
+from mikrom.utils.context import set_context
+from mikrom.utils.telemetry import get_tracer, add_span_attributes
 
 logger = get_logger(__name__)
+tracer = get_tracer()
 
 router = APIRouter()
 
@@ -40,25 +43,70 @@ async def create_vm(
     vm_service: Annotated[VMService, Depends(get_vm_service)],
 ):
     """Create a new VM."""
-    try:
-        # Create VM (starts background task)
-        vm = await vm_service.create_vm(
-            session=session,
-            user=current_user,
-            name=vm_data.name,
-            vcpu_count=vm_data.vcpu_count,
-            memory_mb=vm_data.memory_mb,
-            description=vm_data.description,
+    with tracer.start_as_current_span("api.vm.create") as span:
+        # Set context
+        set_context(action="vm.create")
+
+        # Add span attributes
+        add_span_attributes(
+            **{
+                "user.id": current_user.id,
+                "user.name": current_user.username,
+                "vm.name": vm_data.name,
+                "vm.vcpu_count": vm_data.vcpu_count,
+                "vm.memory_mb": vm_data.memory_mb,
+            }
         )
 
-        return vm
-
-    except Exception as e:
-        logger.error(f"Failed to create VM: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create VM: {str(e)}",
+        logger.info(
+            "Creating VM",
+            extra={
+                "name": vm_data.name,
+                "vcpu_count": vm_data.vcpu_count,
+                "memory_mb": vm_data.memory_mb,
+                "description": vm_data.description,
+            },
         )
+
+        try:
+            # Create VM (starts background task)
+            vm = await vm_service.create_vm(
+                session=session,
+                user=current_user,
+                name=vm_data.name,
+                vcpu_count=vm_data.vcpu_count,
+                memory_mb=vm_data.memory_mb,
+                description=vm_data.description,
+            )
+
+            # Update context with VM ID
+            set_context(vm_id=vm.vm_id)
+            add_span_attributes(**{"vm.id": vm.vm_id, "vm.db_id": vm.id})
+
+            logger.info(
+                "VM created successfully",
+                extra={
+                    "vm_id": vm.vm_id,
+                    "vm_db_id": vm.id,
+                    "status": vm.status,
+                },
+            )
+
+            return vm
+
+        except Exception as e:
+            logger.error(
+                "Failed to create VM",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            )
+            span.record_exception(e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create VM: {str(e)}",
+            )
 
 
 @router.get(
@@ -162,19 +210,37 @@ async def delete_vm(
     vm_service: Annotated[VMService, Depends(get_vm_service)],
 ):
     """Delete a VM."""
-    vm = await vm_service.get_vm_by_id(session, vm_id, current_user)
+    with tracer.start_as_current_span("api.vm.delete") as span:
+        # Set context
+        set_context(action="vm.delete", vm_id=vm_id)
+        add_span_attributes(**{"vm.id": vm_id, "user.id": current_user.id})
 
-    if not vm:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="VM not found"
-        )
+        logger.info("Deleting VM", extra={"vm_id": vm_id})
 
-    # Can't delete if already deleting
-    if vm.status == VMStatus.DELETING:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="VM is already being deleted"
-        )
+        vm = await vm_service.get_vm_by_id(session, vm_id, current_user)
 
-    await vm_service.delete_vm(session, vm)
+        if not vm:
+            logger.warning("VM not found", extra={"vm_id": vm_id})
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="VM not found"
+            )
 
-    return {"message": "VM deletion queued", "vm_id": vm.vm_id, "status": "deleting"}
+        # Can't delete if already deleting
+        if vm.status == VMStatus.DELETING:
+            logger.warning(
+                "VM already being deleted", extra={"vm_id": vm_id, "status": vm.status}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="VM is already being deleted",
+            )
+
+        await vm_service.delete_vm(session, vm)
+
+        logger.info("VM deletion queued", extra={"vm_id": vm_id, "status": "deleting"})
+
+        return {
+            "message": "VM deletion queued",
+            "vm_id": vm.vm_id,
+            "status": "deleting",
+        }

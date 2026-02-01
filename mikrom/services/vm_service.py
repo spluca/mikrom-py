@@ -10,9 +10,12 @@ from arq.connections import ArqRedis
 from mikrom.models import VM, User, VMStatus
 from mikrom.config import settings
 from mikrom.utils.logger import get_logger
+from mikrom.utils.context import set_context, operation_context
+from mikrom.utils.telemetry import get_tracer, add_span_attributes
 from mikrom.worker.settings import get_redis_settings
 
 logger = get_logger(__name__)
+tracer = get_tracer()
 
 
 class VMService:
@@ -61,41 +64,80 @@ class VMService:
         Returns:
             VM model with status='pending'
         """
-        # Generate unique VM ID
-        vm_id = self.generate_vm_id()
+        with tracer.start_as_current_span("service.vm.create") as span:
+            # Generate unique VM ID
+            vm_id = self.generate_vm_id()
 
-        # Create VM record in database
-        vm = VM(
-            vm_id=vm_id,
-            name=name,
-            description=description,
-            vcpu_count=vcpu_count,
-            memory_mb=memory_mb,
-            user_id=user.id,
-            status=VMStatus.PENDING,
-            kernel_path=kernel_path,
-        )
+            # Set context
+            set_context(vm_id=vm_id)
+            add_span_attributes(
+                **{
+                    "vm.id": vm_id,
+                    "vm.name": name,
+                    "vm.vcpu_count": vcpu_count,
+                    "vm.memory_mb": memory_mb,
+                    "user.id": user.id,
+                }
+            )
 
-        session.add(vm)
-        await session.commit()
-        await session.refresh(vm)
+            # Create VM record in database
+            with tracer.start_as_current_span("service.vm.create.db_insert"):
+                logger.info(
+                    "Inserting VM record in database",
+                    extra={
+                        "name": name,
+                        "vcpu_count": vcpu_count,
+                        "memory_mb": memory_mb,
+                        "user_id": user.id,
+                        "user_name": user.username,
+                    },
+                )
 
-        logger.info(f"Created VM record {vm.id} ({vm_id}) for user {user.username}")
+                vm = VM(
+                    vm_id=vm_id,
+                    name=name,
+                    description=description,
+                    vcpu_count=vcpu_count,
+                    memory_mb=memory_mb,
+                    user_id=user.id,
+                    status=VMStatus.PENDING,
+                    kernel_path=kernel_path,
+                )
 
-        # Queue background task to actually create the VM
-        redis = await self.get_redis_pool()
-        job = await redis.enqueue_job(
-            "create_vm_task",
-            vm.id,
-            vcpu_count,
-            memory_mb,
-            kernel_path,
-            settings.FIRECRACKER_DEFAULT_HOST,
-        )
+                session.add(vm)
+                await session.commit()
+                await session.refresh(vm)
 
-        logger.info(f"Queued VM creation job {job.job_id} for VM {vm_id}")
+                add_span_attributes(**{"vm.db_id": vm.id})
 
-        return vm
+            logger.info(
+                "VM record created",
+                extra={
+                    "vm_db_id": vm.id,
+                    "status": vm.status,
+                },
+            )
+
+            # Queue background task to actually create the VM
+            with tracer.start_as_current_span("service.vm.create.queue_job"):
+                logger.info("Queueing VM creation background job")
+
+                redis = await self.get_redis_pool()
+                job = await redis.enqueue_job(
+                    "create_vm_task",
+                    vm.id,
+                    vcpu_count,
+                    memory_mb,
+                    kernel_path,
+                    settings.FIRECRACKER_DEFAULT_HOST,
+                )
+
+                if job:
+                    logger.info("VM creation job queued", extra={"job_id": job.job_id})
+                else:
+                    logger.warning("Job enqueued but no job ID returned")
+
+            return vm
 
     async def get_user_vms(
         self, session: AsyncSession, user: User, offset: int = 0, limit: int = 10
@@ -167,23 +209,43 @@ class VMService:
             session: Database session
             vm: VM to delete
         """
-        logger.info(f"Queueing deletion for VM {vm.vm_id}")
+        with tracer.start_as_current_span("service.vm.delete") as span:
+            add_span_attributes(
+                **{
+                    "vm.id": vm.vm_id,
+                    "vm.db_id": vm.id,
+                }
+            )
 
-        # Update status to deleting
-        vm.status = VMStatus.DELETING
-        session.add(vm)
-        await session.commit()
+            logger.info("Queueing VM deletion", extra={"vm_id": vm.vm_id})
 
-        # Queue background task
-        redis = await self.get_redis_pool()
-        job = await redis.enqueue_job(
-            "delete_vm_task",
-            vm.id,
-            vm.vm_id,
-            vm.host,
-        )
+            # Update status to deleting
+            with tracer.start_as_current_span("service.vm.delete.update_status"):
+                vm.status = VMStatus.DELETING
+                session.add(vm)
+                await session.commit()
 
-        logger.info(f"Queued VM deletion job {job.job_id} for VM {vm.vm_id}")
+                logger.info("VM status updated to deleting", extra={"vm_id": vm.vm_id})
+
+            # Queue background task
+            with tracer.start_as_current_span("service.vm.delete.queue_job"):
+                redis = await self.get_redis_pool()
+                job = await redis.enqueue_job(
+                    "delete_vm_task",
+                    vm.id,
+                    vm.vm_id,
+                    vm.host,
+                )
+
+                if job:
+                    logger.info(
+                        "VM deletion job queued",
+                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
+                    )
+                else:
+                    logger.warning(
+                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
+                    )
 
     async def close(self):
         """Close service resources."""

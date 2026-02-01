@@ -11,12 +11,14 @@ from slowapi.errors import RateLimitExceeded
 from mikrom import __version__
 from mikrom.config import settings
 from mikrom.utils.logger import setup_logging, get_logger
+from mikrom.utils.telemetry import setup_telemetry, instrument_app
 from mikrom.middleware.rate_limit import limiter
 from mikrom.middleware.logging import LoggingMiddleware
 from mikrom.api.v1.router import api_router
 
-# Setup logging
+# Setup logging and telemetry
 setup_logging()
+setup_telemetry()
 logger = get_logger(__name__)
 
 
@@ -24,10 +26,18 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan events."""
     # Startup
-    logger.info(f"Starting {settings.PROJECT_NAME} v{__version__}")
-    logger.info(f"Environment: {settings.ENVIRONMENT}")
-    logger.info(f"Debug mode: {settings.DEBUG}")
-    logger.info(f"API v1 prefix: {settings.API_V1_PREFIX}")
+    logger.info(
+        f"Starting {settings.PROJECT_NAME}",
+        extra={
+            "version": __version__,
+            "environment": settings.ENVIRONMENT,
+            "debug": settings.DEBUG,
+            "api_prefix": settings.API_V1_PREFIX,
+        },
+    )
+
+    # Instrument FastAPI app with OpenTelemetry
+    instrument_app(app)
 
     yield
 

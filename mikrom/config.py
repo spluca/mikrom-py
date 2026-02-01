@@ -47,6 +47,12 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"  # json or console
+
+    # OpenTelemetry Configuration
+    OTEL_SERVICE_NAME: str = "mikrom-api"
+    OTEL_TRACE_SAMPLE_RATE: float = 1.0  # 1.0 = 100% sampling
+    OTEL_EXPORT_CONSOLE: bool = True
 
     # Redis/arq configuration
     REDIS_URL: str = "redis://localhost:6379"

@@ -4,9 +4,11 @@ import ansible_runner
 from pathlib import Path
 from typing import Optional, Dict, Any
 from mikrom.config import settings
-from mikrom.utils.logger import get_logger
+from mikrom.utils.logger import get_logger, log_timer
+from mikrom.utils.telemetry import get_tracer, add_span_attributes, add_span_event
 
 logger = get_logger(__name__)
+tracer = get_tracer()
 
 
 class FirecrackerError(Exception):
@@ -56,44 +58,104 @@ class FirecrackerClient:
         Raises:
             FirecrackerError: If playbook execution fails
         """
-        logger.info(f"Running playbook {playbook} with vars: {extravars}")
-
-        try:
-            runner = ansible_runner.run(
-                playbook=playbook,
-                private_data_dir=str(self.deploy_path),
-                extravars=extravars,
-                limit=limit,
-                quiet=False,
-                verbosity=0,
+        with tracer.start_as_current_span(f"ansible.{playbook}") as span:
+            # Add span attributes
+            add_span_attributes(
+                **{
+                    "ansible.playbook": playbook,
+                    "ansible.limit": limit or "all",
+                }
             )
 
-            if runner.status != "successful":
-                error_msg = f"Playbook {playbook} failed with status: {runner.status}"
-                if runner.rc != 0:
-                    error_msg += f", return code: {runner.rc}"
-                logger.error(error_msg)
+            # Add variables as attributes (sanitize sensitive data)
+            for key, value in extravars.items():
+                add_span_attributes(**{f"ansible.var.{key}": str(value)})
 
-                # Try to get error details from events
-                for event in runner.events:
-                    if event.get("event") == "runner_on_failed":
-                        event_data = event.get("event_data", {})
-                        task = event_data.get("task", "Unknown task")
-                        res = event_data.get("res", {})
-                        msg = res.get("msg", res.get("stderr", "No error details"))
-                        logger.error(f"Task '{task}' failed: {msg}")
+            logger.info(
+                "Starting Ansible playbook execution",
+                extra={
+                    "playbook": playbook,
+                    "variables": extravars,
+                    "limit": limit,
+                },
+            )
 
-                raise FirecrackerError(error_msg)
+            try:
+                with log_timer(f"playbook_{playbook}", logger):
+                    runner = ansible_runner.run(
+                        playbook=playbook,
+                        private_data_dir=str(self.deploy_path),
+                        extravars=extravars,
+                        limit=limit,
+                        quiet=False,
+                        verbosity=0,
+                    )
 
-            logger.info(f"Playbook {playbook} completed successfully")
-            return runner
+                if runner.status != "successful":
+                    error_msg = (
+                        f"Playbook {playbook} failed with status: {runner.status}"
+                    )
+                    if runner.rc != 0:
+                        error_msg += f", return code: {runner.rc}"
 
-        except Exception as e:
-            if isinstance(e, FirecrackerError):
-                raise
-            error_msg = f"Failed to run playbook {playbook}: {str(e)}"
-            logger.error(error_msg)
-            raise FirecrackerError(error_msg) from e
+                    logger.error(
+                        "Playbook execution failed",
+                        extra={
+                            "playbook": playbook,
+                            "status": runner.status,
+                            "return_code": runner.rc,
+                            "stats": runner.stats,
+                        },
+                    )
+
+                    # Try to get error details from events
+                    for event in runner.events:
+                        if event.get("event") == "runner_on_failed":
+                            event_data = event.get("event_data", {})
+                            task = event_data.get("task", "Unknown task")
+                            res = event_data.get("res", {})
+                            msg = res.get("msg", res.get("stderr", "No error details"))
+
+                            logger.error(
+                                "Ansible task failed",
+                                extra={
+                                    "playbook": playbook,
+                                    "task": task,
+                                    "error_message": msg,
+                                },
+                            )
+
+                            add_span_event("task_failed", {"task": task, "error": msg})
+
+                    span.record_exception(Exception(error_msg))
+                    raise FirecrackerError(error_msg)
+
+                logger.info(
+                    "Playbook completed successfully",
+                    extra={
+                        "playbook": playbook,
+                        "stats": runner.stats,
+                    },
+                )
+
+                add_span_event("playbook_completed", {"status": runner.status})
+                return runner
+
+            except Exception as e:
+                if isinstance(e, FirecrackerError):
+                    raise
+
+                error_msg = f"Failed to run playbook {playbook}: {str(e)}"
+                logger.error(
+                    "Playbook execution error",
+                    extra={
+                        "playbook": playbook,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                )
+                span.record_exception(e)
+                raise FirecrackerError(error_msg) from e
 
     async def start_vm(
         self,
