@@ -4,7 +4,7 @@ from typing import AsyncGenerator
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from mikrom.main import app
 from mikrom.api.deps import get_db

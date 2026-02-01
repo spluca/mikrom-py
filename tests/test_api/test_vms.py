@@ -2,7 +2,6 @@
 
 import pytest
 from httpx import AsyncClient
-from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mikrom.models.vm import VM, VMStatus

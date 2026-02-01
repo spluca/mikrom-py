@@ -3,7 +3,6 @@
 import json
 import logging
 from io import StringIO
-from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -11,7 +10,7 @@ from fastapi import FastAPI, APIRouter
 
 from mikrom.middleware.logging import LoggingMiddleware
 from mikrom.utils.logger import CustomJsonFormatter, get_logger
-from mikrom.utils.context import get_context, clear_context
+from mikrom.utils.context import get_context
 
 
 # Create a test app
@@ -65,7 +64,7 @@ class TestLoggingMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
-            response = await client.get("/test")
+            await client.get("/test")
 
         # Get logs
         output = stream.getvalue()

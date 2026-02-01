@@ -1,15 +1,14 @@
 """Background tasks for VM operations with enhanced logging and tracing."""
 
-import secrets
 from typing import Optional
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from mikrom.database import sync_engine
 from mikrom.models import VM
 from mikrom.clients.ippool import IPPoolClient
 from mikrom.clients.firecracker import FirecrackerClient
 from mikrom.utils.logger import get_logger, log_timer
-from mikrom.utils.context import set_context, operation_context
+from mikrom.utils.context import set_context
 from mikrom.utils.telemetry import get_tracer, add_span_attributes, add_span_event
 
 logger = get_logger(__name__)

@@ -10,11 +10,6 @@ from mikrom.utils.context import (
     set_context,
     get_context,
     clear_context,
-    vm_id_var,
-    user_id_var,
-    user_name_var,
-    request_id_var,
-    action_var,
 )
 
 

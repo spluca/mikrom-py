@@ -1,12 +1,10 @@
 """Unit tests for mikrom.utils.telemetry module."""
 
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 import pytest
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource
 
-from opentelemetry import trace
 from mikrom.utils.telemetry import (
     setup_telemetry,
     get_tracer,

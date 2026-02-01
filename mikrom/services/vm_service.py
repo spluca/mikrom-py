@@ -10,7 +10,7 @@ from arq.connections import ArqRedis
 from mikrom.models import VM, User, VMStatus
 from mikrom.config import settings
 from mikrom.utils.logger import get_logger
-from mikrom.utils.context import set_context, operation_context
+from mikrom.utils.context import set_context
 from mikrom.utils.telemetry import get_tracer, add_span_attributes
 from mikrom.worker.settings import get_redis_settings
 
@@ -64,7 +64,7 @@ class VMService:
         Returns:
             VM model with status='pending'
         """
-        with tracer.start_as_current_span("service.vm.create") as span:
+        with tracer.start_as_current_span("service.vm.create") as _span:
             # Generate unique VM ID
             vm_id = self.generate_vm_id()
 
@@ -209,7 +209,7 @@ class VMService:
             session: Database session
             vm: VM to delete
         """
-        with tracer.start_as_current_span("service.vm.delete") as span:
+        with tracer.start_as_current_span("service.vm.delete") as _span:
             add_span_attributes(
                 **{
                     "vm.id": vm.vm_id,

@@ -210,7 +210,7 @@ async def delete_vm(
     vm_service: Annotated[VMService, Depends(get_vm_service)],
 ):
     """Delete a VM."""
-    with tracer.start_as_current_span("api.vm.delete") as span:
+    with tracer.start_as_current_span("api.vm.delete") as _span:
         # Set context
         set_context(action="vm.delete", vm_id=vm_id)
         add_span_attributes(**{"vm.id": vm_id, "user.id": current_user.id})
