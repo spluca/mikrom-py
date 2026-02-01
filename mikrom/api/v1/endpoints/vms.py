@@ -61,7 +61,7 @@ async def create_vm(
         logger.info(
             "Creating VM",
             extra={
-                "name": vm_data.name,
+                "vm_name": vm_data.name,
                 "vcpu_count": vm_data.vcpu_count,
                 "memory_mb": vm_data.memory_mb,
                 "description": vm_data.description,

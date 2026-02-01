@@ -85,7 +85,7 @@ class VMService:
                 logger.info(
                     "Inserting VM record in database",
                     extra={
-                        "name": name,
+                        "vm_name": name,
                         "vcpu_count": vcpu_count,
                         "memory_mb": memory_mb,
                         "user_id": user.id,
