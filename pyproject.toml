@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.2",
+    "ansible>=13.3.0",
     "ansible-runner",
     "argon2-cffi>=25.1.0",
     "arq",

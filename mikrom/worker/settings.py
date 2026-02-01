@@ -30,6 +30,10 @@ def get_redis_settings() -> RedisSettings:
         host = host_port
         port = 6379
 
+    # Force IPv4 by converting localhost to 127.0.0.1
+    if host == "localhost":
+        host = "127.0.0.1"
+
     return RedisSettings(host=host, port=port, database=db)
 
 

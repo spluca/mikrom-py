@@ -46,6 +46,19 @@ services:
     environment:
       ADMINER_DEFAULT_SERVER: db
 
+  ippool:
+    image: ippool:latest
+    container_name: mikrom_ippool
+    ports:
+      - "8090:8090"
+    networks:
+      - mikrom_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   app:
     build:
       context: .
@@ -75,6 +88,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
       REDIS_URL: redis://redis:6379
+      IPPOOL_API_URL: http://ippool:8090
     env_file:
       - .env
     depends_on:
@@ -82,8 +96,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ippool:
+        condition: service_healthy
     networks:
       - mikrom_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /home/apardo/Work/mikrom/new/firecracker-deploy:/firecracker-deploy:ro
+      - ~/.ssh:/root/.ssh:ro
 
 volumes:
   postgres_data:

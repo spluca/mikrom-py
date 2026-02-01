@@ -265,6 +265,22 @@ info: ## Mostrar información del proyecto
 	@echo ""
 
 # ============================================================================
+# Tests de Integración - VMs
+# ============================================================================
+
+test-vm-lifecycle: ## Probar ciclo de vida completo de VM
+	@echo "$(GREEN)Ejecutando test de ciclo de vida de VM...$(NC)"
+	@./scripts/test-vm-lifecycle.sh
+
+test-vm-quick: ## Prueba rápida de VM (sin esperar running)
+	@echo "$(GREEN)Ejecutando prueba rápida de VM (timeout reducido)...$(NC)"
+	@MAX_WAIT_TIME=10 ./scripts/test-vm-lifecycle.sh
+
+test-vm-verbose: ## Prueba de VM con output detallado
+	@echo "$(GREEN)Ejecutando prueba de VM en modo verbose...$(NC)"
+	@VERBOSE=true ./scripts/test-vm-lifecycle.sh
+
+# ============================================================================
 # CI/CD
 # ============================================================================
 

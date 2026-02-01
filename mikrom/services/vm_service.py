@@ -25,7 +25,11 @@ class VMService:
     async def get_redis_pool(self) -> ArqRedis:
         """Get or create Redis pool for arq."""
         if self._redis is None:
-            self._redis = await create_pool(get_redis_settings())
+            from mikrom.config import settings as app_settings
+
+            self._redis = await create_pool(
+                get_redis_settings(), default_queue_name=app_settings.ARQ_QUEUE_NAME
+            )
         return self._redis
 
     def generate_vm_id(self) -> str:
