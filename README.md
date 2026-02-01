@@ -1,214 +1,250 @@
 # Mikrom API
 
-REST API moderna construida con **FastAPI**, **SQLModel**, **PostgreSQL** y gestionada con **uv**.
+Modern REST API built with **FastAPI**, **SQLModel**, **PostgreSQL**, and managed with **uv**.
 
-## Características
+## Features
 
-- **FastAPI**: Framework web moderno y rápido para construir APIs
-- **SQLModel**: ORM con integración perfecta con Pydantic
-- **PostgreSQL**: Base de datos relacional robusta
-- **JWT Authentication**: Sistema de autenticación con tokens de acceso y refresh
-- **Async/Await**: API completamente asíncrona
-- **Rate Limiting**: Protección contra abuso con SlowAPI
-- **CORS**: Configurado para desarrollo frontend
-- **Logging**: Sistema de logs estructurado con niveles configurables
-- **Docker**: Desarrollo con Docker Compose
-- **Migraciones**: Alembic para versionado de base de datos
-- **Tests**: Suite de tests con pytest
-- **Type Hints**: Código completamente tipado
-- **Validación**: Validación automática con Pydantic
-- **Documentación**: Swagger UI y ReDoc integrados
+- **FastAPI**: Modern and fast web framework for building APIs
+- **SQLModel**: ORM with perfect Pydantic integration
+- **PostgreSQL**: Robust relational database
+- **JWT Authentication**: Authentication system with access and refresh tokens
+- **Async/Await**: Fully asynchronous API
+- **Rate Limiting**: Abuse protection with SlowAPI
+- **CORS**: Configured for frontend development
+- **Logging**: Structured logging system with configurable levels
+- **Docker**: Development with Docker Compose
+- **Migrations**: Alembic for database versioning
+- **Tests**: Test suite with pytest
+- **Type Hints**: Fully typed code
+- **Validation**: Automatic validation with Pydantic
+- **Documentation**: Integrated Swagger UI and ReDoc
+- **VM Management**: Firecracker microVM provisioning and management
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 mikrom-py/
-├── .env                        # Variables de entorno (no en git)
-├── .env.example                # Plantilla de variables de entorno
-├── .gitignore                  # Archivos ignorados por git
-├── pyproject.toml              # Configuración del proyecto uv
-├── docker-compose.yml          # Servicios Docker
-├── Dockerfile                  # Imagen Docker de la aplicación
-├── README.md                   # Esta documentación
-├── alembic.ini                 # Configuración de Alembic
-├── alembic/                    # Directorio de migraciones
-│   ├── env.py                  # Configuración de entorno de migraciones
-│   ├── script.py.mako          # Template de migraciones
-│   └── versions/               # Archivos de migración
-├── mikrom/                     # Paquete principal
+├── .env                        # Environment variables (not in git)
+├── .env.example                # Environment variables template
+├── .gitignore                  # Files ignored by git
+├── pyproject.toml              # uv project configuration
+├── docker-compose.yml          # Docker services
+├── Dockerfile                  # Application Docker image
+├── README.md                   # This documentation
+├── alembic.ini                 # Alembic configuration
+├── alembic/                    # Migrations directory
+│   ├── env.py                  # Migration environment configuration
+│   ├── script.py.mako          # Migration template
+│   └── versions/               # Migration files
+├── mikrom/                     # Main package
 │   ├── __init__.py
-│   ├── main.py                 # Aplicación FastAPI
-│   ├── config.py               # Configuración con Pydantic Settings
-│   ├── database.py             # Configuración de base de datos
-│   ├── dependencies.py         # Dependencias globales
-│   ├── core/                   # Núcleo de la aplicación
+│   ├── main.py                 # FastAPI application
+│   ├── config.py               # Configuration with Pydantic Settings
+│   ├── database.py             # Database configuration
+│   ├── dependencies.py         # Global dependencies
+│   ├── core/                   # Application core
 │   │   ├── __init__.py
-│   │   ├── security.py         # JWT, hashing de passwords
-│   │   └── exceptions.py       # Excepciones personalizadas
-│   ├── models/                 # Modelos SQLModel
+│   │   ├── security.py         # JWT, password hashing
+│   │   └── exceptions.py       # Custom exceptions
+│   ├── models/                 # SQLModel models
 │   │   ├── __init__.py
-│   │   ├── base.py             # Modelo base con timestamps
-│   │   └── user.py             # Modelo de usuario
-│   ├── schemas/                # Schemas Pydantic
+│   │   ├── base.py             # Base model with timestamps
+│   │   ├── user.py             # User model
+│   │   └── vm.py               # VM model
+│   ├── schemas/                # Pydantic schemas
 │   │   ├── __init__.py
-│   │   ├── common.py           # Schemas comunes
-│   │   ├── token.py            # Schemas de tokens
-│   │   └── user.py             # Schemas de usuario
-│   ├── api/                    # Endpoints de la API
+│   │   ├── common.py           # Common schemas
+│   │   ├── token.py            # Token schemas
+│   │   ├── user.py             # User schemas
+│   │   └── vm.py               # VM schemas
+│   ├── api/                    # API endpoints
 │   │   ├── __init__.py
-│   │   ├── deps.py             # Dependencias de endpoints
-│   │   └── v1/                 # API versión 1
+│   │   ├── deps.py             # Endpoint dependencies
+│   │   └── v1/                 # API version 1
 │   │       ├── __init__.py
-│   │       ├── router.py       # Router principal v1
+│   │       ├── router.py       # Main v1 router
 │   │       └── endpoints/
 │   │           ├── __init__.py
-│   │           ├── auth.py     # Autenticación
-│   │           ├── users.py    # CRUD de usuarios
+│   │           ├── auth.py     # Authentication
+│   │           ├── users.py    # User CRUD
+│   │           ├── vms.py      # VM management
 │   │           └── health.py   # Health check
-│   ├── middleware/             # Middleware personalizado
+│   ├── clients/                # External service clients
+│   │   ├── __init__.py
+│   │   ├── ippool.py           # IP Pool client
+│   │   └── firecracker.py      # Firecracker deployment client
+│   ├── services/               # Business logic
+│   │   ├── __init__.py
+│   │   └── vm_service.py       # VM service
+│   ├── worker/                 # Background tasks
+│   │   ├── __init__.py
+│   │   ├── settings.py         # Worker configuration
+│   │   └── tasks.py            # Task definitions
+│   ├── middleware/             # Custom middleware
 │   │   ├── __init__.py
 │   │   ├── rate_limit.py       # Rate limiting
-│   │   └── logging.py          # Logging de requests
-│   └── utils/                  # Utilidades
+│   │   └── logging.py          # Request logging
+│   └── utils/                  # Utilities
 │       ├── __init__.py
-│       └── logger.py           # Configuración de logging
+│       └── logger.py           # Logging configuration
 └── tests/                      # Tests
     ├── __init__.py
-    ├── conftest.py             # Fixtures de pytest
-    └── test_api/
-        ├── __init__.py
-        └── test_auth.py        # Tests de autenticación
+    ├── conftest.py             # Pytest fixtures
+    ├── test_api/
+    │   ├── __init__.py
+    │   ├── test_auth.py        # Authentication tests
+    │   ├── test_users.py       # User tests
+    │   └── test_vms.py         # VM tests
+    ├── test_models/
+    │   ├── test_user.py        # User model tests
+    │   └── test_vm.py          # VM model tests
+    └── test_schemas/
+        ├── test_schemas.py     # Schema tests
+        └── test_vm_schemas.py  # VM schema tests
 ```
 
-## Requisitos Previos
+## Prerequisites
 
 - **Python 3.12+**
-- **uv** (gestor de paquetes): [Instalación](https://github.com/astral-sh/uv)
-- **Docker y Docker Compose** (opcional, para desarrollo)
-- **PostgreSQL** (si no usas Docker)
+- **uv** (package manager): [Installation](https://github.com/astral-sh/uv)
+- **Docker and Docker Compose** (optional, for development)
+- **PostgreSQL** (if not using Docker)
+- **Redis** (if not using Docker, required for VM management)
 
-## Instalación
+## Installation
 
-### 1. Clonar el repositorio (si aplica)
+### 1. Clone the repository (if applicable)
 
 ```bash
 git clone <repository-url>
 cd mikrom-py
 ```
 
-### 2. Configurar variables de entorno
+### 2. Configure environment variables
 
 ```bash
-# Copiar archivo de ejemplo
+# Copy example file
 cp .env.example .env
 
-# Editar .env con tus valores
-# IMPORTANTE: Cambia el SECRET_KEY en producción
+# Edit .env with your values
+# IMPORTANT: Change SECRET_KEY in production
 ```
 
-### 3. Instalar dependencias con uv
+### 3. Install dependencies with uv
 
 ```bash
-# Instalar todas las dependencias
+# Install all dependencies
 uv sync
 
-# O instalar con dependencias de desarrollo
+# Or install with development dependencies
 uv sync --all-groups
 ```
 
-## Uso
+## Usage
 
-### Opción 1: Con Docker (Recomendado)
+### Option 1: With Docker (Recommended)
 
 ```bash
-# Levantar servicios (PostgreSQL + Adminer + App)
+# Start services (PostgreSQL + Redis + Adminer + App + Worker)
 docker-compose up -d
 
-# Ver logs
+# View logs
 docker-compose logs -f app
 
-# La API estará disponible en:
+# The API will be available at:
 # - API: http://localhost:8000
 # - Docs: http://localhost:8000/docs
 # - ReDoc: http://localhost:8000/redoc
-# - Adminer: http://localhost:8080 (admin BD)
+# - Adminer: http://localhost:8080 (DB admin)
 ```
 
-### Opción 2: Local (sin Docker)
+### Option 2: Local (without Docker)
 
 ```bash
-# 1. Asegúrate de tener PostgreSQL corriendo
-# 2. Actualiza DATABASE_URL en .env
+# 1. Make sure PostgreSQL is running
+# 2. Make sure Redis is running (for VM management)
+# 3. Update DATABASE_URL and REDIS_URL in .env
 
-# 3. Ejecutar migraciones
+# 4. Run migrations
 uv run alembic upgrade head
 
-# 4. Ejecutar la aplicación
+# 5. Run the application
 uv run uvicorn mikrom.main:app --reload --host 0.0.0.0 --port 8000
 
-# La API estará en http://localhost:8000
+# 6. Run the worker (in another terminal, for VM management)
+uv run python run_worker.py
+
+# The API will be at http://localhost:8000
 ```
 
-### Opción 3: Ejecutar directamente
+### Option 3: Run directly
 
 ```bash
-# Ejecutar con Python
+# Run with Python
 uv run python -m mikrom.main
 ```
 
-## Migraciones de Base de Datos
+## Database Migrations
 
 ```bash
-# Crear una nueva migración automáticamente
-uv run alembic revision --autogenerate -m "Descripción del cambio"
+# Create a new migration automatically
+uv run alembic revision --autogenerate -m "Change description"
 
-# Aplicar migraciones
+# Apply migrations
 uv run alembic upgrade head
 
-# Revertir última migración
+# Revert last migration
 uv run alembic downgrade -1
 
-# Ver historial de migraciones
+# View migration history
 uv run alembic history
 
-# Ver estado actual
+# View current state
 uv run alembic current
 ```
 
 ## Tests
 
 ```bash
-# Ejecutar todos los tests
+# Run all tests (requires PostgreSQL to be running)
+make test
+
+# Or with uv directly
 uv run pytest
 
-# Con coverage
+# With coverage
 uv run pytest --cov=mikrom --cov-report=html
 
-# Ejecutar tests específicos
+# Run specific tests
 uv run pytest tests/test_api/test_auth.py
 
-# Con output verbose
+# With verbose output
 uv run pytest -v
 ```
 
-## Desarrollo
+**Note:** Tests require PostgreSQL to be running. Start it with:
+```bash
+docker compose up -d db redis
+```
 
-### Linting y Formateo
+## Development
+
+### Linting and Formatting
 
 ```bash
-# Ejecutar ruff para linting
+# Run ruff for linting
 uv run ruff check .
 
-# Formatear código con ruff
+# Format code with ruff
 uv run ruff format .
 
-# Fix automático de issues
+# Auto-fix issues
 uv run ruff check --fix .
 ```
 
-### Crear un Superusuario
+### Create a Superuser
 
-Puedes crear un superusuario ejecutando un script Python:
+You can create a superuser by running a Python script:
 
 ```bash
 uv run python -c "
@@ -232,33 +268,46 @@ with Session(sync_engine) as session:
 "
 ```
 
+Or use the Makefile:
+```bash
+make superuser
+```
+
 ## API Endpoints
 
-### Autenticación
+### Authentication
 
-- `POST /api/v1/auth/register` - Registrar nuevo usuario
+- `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - Login (OAuth2 form)
 - `POST /api/v1/auth/login/json` - Login (JSON body)
-- `POST /api/v1/auth/refresh` - Refrescar access token
-- `GET /api/v1/auth/me` - Obtener usuario actual
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `GET /api/v1/auth/me` - Get current user
 
-### Usuarios
+### Users
 
-- `GET /api/v1/users` - Listar usuarios (paginado)
-- `GET /api/v1/users/{id}` - Obtener usuario por ID
-- `PUT /api/v1/users/{id}` - Actualizar usuario
-- `DELETE /api/v1/users/{id}` - Eliminar usuario (solo superuser)
+- `GET /api/v1/users` - List users (paginated)
+- `GET /api/v1/users/{id}` - Get user by ID
+- `PUT /api/v1/users/{id}` - Update user
+- `DELETE /api/v1/users/{id}` - Delete user (superuser only)
 
-### Utilidades
+### Virtual Machines
 
-- `GET /` - Información de la API
+- `POST /api/v1/vms/` - Create new VM
+- `GET /api/v1/vms/` - List VMs (paginated, user's own VMs)
+- `GET /api/v1/vms/{vm_id}` - Get VM details by VM ID
+- `PATCH /api/v1/vms/{vm_id}` - Update VM (name/description)
+- `DELETE /api/v1/vms/{vm_id}` - Delete VM
+
+### Utilities
+
+- `GET /` - API information
 - `GET /api/v1/health` - Health check
 - `GET /docs` - Swagger UI
 - `GET /redoc` - ReDoc
 
-## Ejemplos de Uso
+## Usage Examples
 
-### Registrar un Usuario
+### Register a User
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/auth/register" \
@@ -288,223 +337,336 @@ curl -X POST "http://localhost:8000/api/v1/auth/login/json" \
   }'
 ```
 
-### Acceder a Endpoint Protegido
+### Access Protected Endpoint
 
 ```bash
-# Obtener token del login
-TOKEN="<tu-access-token>"
+# Get token from login
+TOKEN="<your-access-token>"
 
-# Usar en request
+# Use in request
 curl -X GET "http://localhost:8000/api/v1/auth/me" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### Listar Usuarios (con paginación)
+### List Users (with pagination)
 
 ```bash
 curl -X GET "http://localhost:8000/api/v1/users?page=1&page_size=10" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## Configuración
-
-Todas las configuraciones se gestionan mediante variables de entorno en el archivo `.env`:
-
-| Variable | Descripción | Valor por Defecto |
-|----------|-------------|-------------------|
-| `DATABASE_URL` | URL de conexión a PostgreSQL | `postgresql://postgres:postgres@localhost:5432/mikrom_db` |
-| `SECRET_KEY` | Clave secreta para JWT | *Requerido* |
-| `ALGORITHM` | Algoritmo de JWT | `HS256` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Expiración del access token | `30` |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | Expiración del refresh token | `7` |
-| `API_V1_PREFIX` | Prefijo de la API v1 | `/api/v1` |
-| `PROJECT_NAME` | Nombre del proyecto | `Mikrom API` |
-| `DEBUG` | Modo debug | `False` |
-| `ENVIRONMENT` | Entorno (development/production) | `production` |
-| `BACKEND_CORS_ORIGINS` | Orígenes CORS permitidos | `["http://localhost:3000"]` |
-| `RATE_LIMIT_PER_MINUTE` | Límite de requests por minuto | `60` |
-| `LOG_LEVEL` | Nivel de logging | `INFO` |
-
-## Seguridad
-
-### Generar SECRET_KEY
+### Create a VM
 
 ```bash
-# Generar una clave secreta segura
+curl -X POST "http://localhost:8000/api/v1/vms/" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-dev-server",
+    "description": "Development environment",
+    "vcpu_count": 2,
+    "memory_mb": 1024
+  }'
+```
+
+### List VMs
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/vms/?page=1&page_size=10" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Get VM Details
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/vms/srv-a1b2c3d4" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Delete a VM
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/vms/srv-a1b2c3d4" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Configuration
+
+All configurations are managed through environment variables in the `.env` file:
+
+| Variable | Description | Default Value |
+|----------|-------------|---------------|
+| `DATABASE_URL` | PostgreSQL connection URL | `postgresql://postgres:postgres@localhost:5432/mikrom_db` |
+| `SECRET_KEY` | Secret key for JWT | *Required* |
+| `ALGORITHM` | JWT algorithm | `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token expiration | `30` |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token expiration | `7` |
+| `API_V1_PREFIX` | API v1 prefix | `/api/v1` |
+| `PROJECT_NAME` | Project name | `Mikrom API` |
+| `DEBUG` | Debug mode | `False` |
+| `ENVIRONMENT` | Environment (development/production) | `production` |
+| `BACKEND_CORS_ORIGINS` | Allowed CORS origins | `["http://localhost:3000"]` |
+| `RATE_LIMIT_PER_MINUTE` | Requests limit per minute | `60` |
+| `LOG_LEVEL` | Logging level | `INFO` |
+| **VM Management** |
+| `IPPOOL_API_URL` | IP Pool service URL | `http://localhost:8080` |
+| `FIRECRACKER_DEPLOY_PATH` | Path to firecracker-deploy repo | - |
+| `FIRECRACKER_DEFAULT_HOST` | Default KVM host (optional) | - |
+| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
+| `ARQ_QUEUE_NAME` | Task queue name | `mikrom:queue` |
+
+## Security
+
+### Generate SECRET_KEY
+
+```bash
+# Generate a secure secret key
 openssl rand -hex 32
 ```
 
-### Buenas Prácticas
+### Best Practices
 
-- Cambiar `SECRET_KEY` en producción
-- Usar HTTPS en producción
-- Configurar CORS apropiadamente
-- Revisar rate limiting según necesidades
-- Mantener dependencias actualizadas
-- No commitear `.env` a git
+- Change `SECRET_KEY` in production
+- Use HTTPS in production
+- Configure CORS appropriately
+- Review rate limiting according to needs
+- Keep dependencies updated
+- Don't commit `.env` to git
 
 ## Docker
 
-### Servicios Disponibles
+### Available Services
 
 ```bash
-# Levantar todos los servicios
+# Start all services
 docker-compose up -d
 
-# Solo la base de datos
+# Only the database
 docker-compose up -d db
 
-# Ver logs
+# View logs
 docker-compose logs -f
 
-# Detener servicios
+# Stop services
 docker-compose down
 
-# Detener y eliminar volúmenes (¡cuidado, elimina datos!)
+# Stop and remove volumes (warning: deletes data!)
 docker-compose down -v
 ```
 
-### Acceder a Adminer
+### Access Adminer
 
-Adminer es una interfaz web para gestionar la base de datos:
+Adminer is a web interface for managing the database:
 
 - URL: http://localhost:8080
-- Sistema: PostgreSQL
-- Servidor: db
-- Usuario: postgres
+- System: PostgreSQL
+- Server: db
+- User: postgres
 - Password: postgres
-- Base de datos: mikrom_db
+- Database: mikrom_db
 
-## Comandos Útiles
+## Useful Commands
+
+The project includes a comprehensive Makefile with useful commands:
 
 ```bash
-# Ver versión de uv
-uv --version
+# View all available commands
+make help
 
-# Actualizar dependencias
-uv sync --upgrade
+# Installation
+make install          # Install production dependencies
+make dev-install      # Install development dependencies
 
-# Agregar nueva dependencia
-uv add <paquete>
+# Development
+make run             # Run development server
+make worker          # Run background task worker
+make shell           # Open Python shell with project loaded
 
-# Agregar dependencia de desarrollo
-uv add --dev <paquete>
+# Testing
+make test            # Run all tests
+make test-cov        # Run tests with coverage
+make test-fast       # Run only fast tests
 
-# Eliminar dependencia
-uv remove <paquete>
+# Code quality
+make lint            # Run linter
+make lint-fix        # Run linter with auto-fix
+make format          # Format code
+make check           # Run all checks (lint + format + test)
 
-# Ver dependencias instaladas
-uv pip list
+# Database
+make migrate-create MSG="message"  # Create new migration
+make migrate-upgrade              # Apply migrations
+make migrate-downgrade            # Revert last migration
+make superuser                    # Create superuser
+make db-reset                     # Reset database (⚠️ deletes data)
 
-# Ejecutar comando en el entorno virtual
-uv run <comando>
+# Docker
+make docker-build    # Build Docker images
+make docker-up       # Start containers
+make docker-down     # Stop containers
+make docker-logs     # View logs
 
-# Activar entorno virtual manualmente
-source .venv/bin/activate  # Linux/Mac
-.venv\Scripts\activate     # Windows
+# Utilities
+make health          # Check API health
+make docs           # Open API documentation
+make info           # Show project info
+```
+
+## VM Management
+
+For detailed information about VM management, see [VM_GUIDE.md](VM_GUIDE.md).
+
+### Prerequisites for VM Management
+
+1. **IP Pool Service** running at `http://localhost:8080` (or configured URL)
+2. **firecracker-deploy** repository configured with target hosts
+3. **KVM Server** with SSH access and proper setup
+4. **Redis** running for background task queue
+
+### Quick VM Creation Example
+
+```bash
+# 1. Login and get token
+TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin&password=admin123" | jq -r .access_token)
+
+# 2. Create VM
+curl -X POST "http://localhost:8000/api/v1/vms/" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-vm",
+    "vcpu_count": 1,
+    "memory_mb": 512
+  }'
+
+# 3. Check VM status
+curl -X GET "http://localhost:8000/api/v1/vms/srv-XXXXXXXX" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Troubleshooting
 
 ### Error: "Can't load plugin: sqlalchemy.dialects:driver"
 
-Asegúrate de que:
-1. El archivo `.env` existe y tiene `DATABASE_URL` correcta
-2. PostgreSQL está corriendo (si usas Docker: `docker-compose up -d db`)
-3. La URL incluye el driver: `postgresql://...` o `postgresql+asyncpg://...`
+Make sure that:
+1. The `.env` file exists and has the correct `DATABASE_URL`
+2. PostgreSQL is running (if using Docker: `docker-compose up -d db`)
+3. The URL includes the driver: `postgresql://...` or `postgresql+asyncpg://...`
 
 ### Error: "ModuleNotFoundError"
 
 ```bash
-# Reinstalar dependencias
+# Reinstall dependencies
 uv sync
 
-# O limpiar y reinstalar
+# Or clean and reinstall
 rm -rf .venv uv.lock
 uv sync
 ```
 
-### Base de datos no conecta
+### Database doesn't connect
 
 ```bash
-# Verificar que PostgreSQL está corriendo
+# Verify PostgreSQL is running
 docker-compose ps
 
-# Ver logs de PostgreSQL
+# View PostgreSQL logs
 docker-compose logs db
 
-# Reiniciar servicios
+# Restart services
 docker-compose restart
 ```
 
-### Tests fallan
+### Tests fail
 
 ```bash
-# Crear base de datos de test
-# Conectarse a PostgreSQL y ejecutar:
-# CREATE DATABASE mikrom_test_db;
+# Start required services before running tests
+docker compose up -d db redis
 
-# O modificar conftest.py para usar SQLite en tests
+# Then run tests
+make test
 ```
 
-## Próximos Pasos
+### VM stuck in "pending" status
 
-### Funcionalidades a Implementar
+```bash
+# Check worker logs
+docker compose logs worker
 
-- [ ] Sistema de roles y permisos más granular
-- [ ] Recuperación de contraseña por email
-- [ ] Verificación de email
-- [ ] Soporte para upload de archivos
-- [ ] Búsqueda y filtrado avanzado
-- [ ] Paginación con cursor
-- [ ] WebSockets para notificaciones en tiempo real
-- [ ] Cache con Redis
-- [ ] Background tasks con Celery
-- [ ] Monitoring con Prometheus/Grafana
+# Verify Redis is running
+docker compose ps redis
 
-### Mejoras de Seguridad
+# Verify ippool is accessible
+curl http://localhost:8080/api/v1/health
+```
 
-- [ ] Implementar 2FA (autenticación de dos factores)
-- [ ] Rate limiting por usuario (no solo IP)
-- [ ] Blacklist de tokens
+## Documentation
+
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete deployment guide with production setup
+- **[VM_GUIDE.md](VM_GUIDE.md)** - VM management usage guide (Spanish)
+- **[STATUS.md](STATUS.md)** - Project status and implementation details (Spanish)
+
+## Next Steps
+
+### Features to Implement
+
+- [ ] More granular roles and permissions system
+- [ ] Password recovery via email
+- [ ] Email verification
+- [ ] File upload support
+- [ ] Advanced search and filtering
+- [ ] Cursor-based pagination
+- [ ] WebSockets for real-time notifications
+- [ ] Cache with Redis
+- [x] Background tasks with arq ✅
+- [ ] Monitoring with Prometheus/Grafana
+
+### Security Improvements
+
+- [ ] Implement 2FA (two-factor authentication)
+- [ ] Rate limiting per user (not just IP)
+- [ ] Token blacklist
 - [ ] Audit logging
 - [ ] Password strength validation
-- [ ] Account lockout después de intentos fallidos
+- [ ] Account lockout after failed attempts
 
 ### DevOps
 
-- [ ] CI/CD con GitHub Actions
-- [ ] Deployment a producción (AWS/GCP/Azure)
+- [ ] CI/CD with GitLab CI
+- [ ] Production deployment (AWS/GCP/Azure)
 - [ ] Kubernetes manifests
-- [ ] Monitoring y alertas
-- [ ] Backup automático de base de datos
+- [ ] Monitoring and alerts
+- [ ] Automatic database backup
 
-## Recursos
+## Resources
 
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [SQLModel Documentation](https://sqlmodel.tiangolo.com/)
 - [Pydantic Documentation](https://docs.pydantic.dev/)
 - [Alembic Documentation](https://alembic.sqlalchemy.org/)
 - [uv Documentation](https://github.com/astral-sh/uv)
+- [arq Documentation](https://arq-docs.helpmanual.io/)
 
-## Licencia
+## License
 
-MIT License - Siéntete libre de usar este proyecto como base para tus aplicaciones.
+MIT License - Feel free to use this project as a base for your applications.
 
-## Contribuciones
+## Contributing
 
-Las contribuciones son bienvenidas. Por favor:
+Contributions are welcome. Please:
 
-1. Fork del repositorio
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit de cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+1. Fork the repository
+2. Create a branch for your feature (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## Soporte
+## Support
 
-Si encuentras algún problema o tienes preguntas, por favor abre un issue en el repositorio.
+If you encounter any issues or have questions, please open an issue in the repository.
 
 ---
 
-**Desarrollado con FastAPI, SQLModel, y mucho café.**
+**Built with FastAPI, SQLModel, and lots of ☕**
