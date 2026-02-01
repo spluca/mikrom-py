@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from functools import wraps
 from typing import Optional, Callable, Any
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 from mikrom.config import settings
 from mikrom.utils.context import get_context, get_trace_context
@@ -43,28 +43,28 @@ class ContextInjectionFilter(logging.Filter):
         return True
 
 
-class CustomJsonFormatter(jsonlogger.JsonFormatter):
+class CustomJsonFormatter(JsonFormatter):
     """Custom JSON formatter with additional fields."""
 
     def add_fields(
-        self, log_record: dict, record: logging.LogRecord, message_dict: dict
+        self, log_data: dict, record: logging.LogRecord, message_dict: dict
     ) -> None:
         """Add custom fields to log record.
 
         Args:
-            log_record: Dictionary to be logged as JSON
+            log_data: Dictionary to be logged as JSON
             record: Original log record
             message_dict: Message dictionary from logger call
         """
-        super().add_fields(log_record, record, message_dict)
+        super().add_fields(log_data, record, message_dict)
 
         # Ensure timestamp is ISO format
-        if "timestamp" not in log_record:
-            log_record["timestamp"] = record.created
+        if "timestamp" not in log_data:
+            log_data["timestamp"] = record.created
 
         # Add standard fields
-        log_record["level"] = record.levelname
-        log_record["logger"] = record.name
+        log_data["level"] = record.levelname
+        log_data["logger"] = record.name
 
         # Add context fields if present
         for field in [
@@ -79,7 +79,7 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
             if hasattr(record, field):
                 value = getattr(record, field)
                 if value is not None:
-                    log_record[field] = value
+                    log_data[field] = value
 
 
 class ColoredConsoleFormatter(logging.Formatter):
