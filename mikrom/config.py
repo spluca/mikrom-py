@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
 
+    # Redis/arq configuration
+    REDIS_URL: str = "redis://localhost:6379"
+    ARQ_QUEUE_NAME: str = "mikrom:queue"
+
+    # IP Pool configuration
+    IPPOOL_API_URL: str = "http://localhost:8080"
+
+    # Firecracker configuration
+    FIRECRACKER_DEPLOY_PATH: str = "/path/to/firecracker-deploy"
+    FIRECRACKER_DEFAULT_HOST: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

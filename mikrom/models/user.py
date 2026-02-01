@@ -1,9 +1,12 @@
 """User model for authentication and user management."""
 
-from typing import Optional
-from sqlmodel import Field
+from typing import Optional, List, TYPE_CHECKING
+from sqlmodel import Field, Relationship
 
 from mikrom.models.base import TimestampModel
+
+if TYPE_CHECKING:
+    from mikrom.models.vm import VM
 
 
 class User(TimestampModel, table=True):
@@ -45,3 +48,6 @@ class User(TimestampModel, table=True):
         nullable=False,
         description="Whether the user has superuser privileges",
     )
+
+    # Relationships
+    vms: List["VM"] = Relationship(back_populates="user")

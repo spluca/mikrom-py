@@ -106,6 +106,10 @@ run-prod: ## Ejecutar servidor en modo producción
 	@echo "$(GREEN)Iniciando servidor en modo producción...$(NC)"
 	$(UVICORN) $(APP_MODULE) --host 0.0.0.0 --port 8000 --workers 4
 
+worker: ## Ejecutar background task worker
+	@echo "$(GREEN)Iniciando worker de background tasks...$(NC)"
+	$(PYTHON) run_worker.py
+
 shell: ## Abrir shell de Python con el proyecto cargado
 	@echo "$(GREEN)Abriendo shell de Python...$(NC)"
 	$(PYTHON) -i -c "from mikrom.main import app; from mikrom.database import engine; from mikrom.models import *"

@@ -13,6 +13,13 @@ from mikrom.schemas.user import (
     UserResponse,
     UserLogin,
 )
+from mikrom.schemas.vm import (
+    VMCreate,
+    VMUpdate,
+    VMResponse,
+    VMListResponse,
+    VMStatusResponse,
+)
 
 __all__ = [
     "ResponseMessage",
@@ -26,4 +33,9 @@ __all__ = [
     "UserUpdate",
     "UserResponse",
     "UserLogin",
+    "VMCreate",
+    "VMUpdate",
+    "VMResponse",
+    "VMListResponse",
+    "VMStatusResponse",
 ]

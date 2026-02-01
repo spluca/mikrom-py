@@ -19,6 +19,21 @@ services:
     networks:
       - mikrom_network
 
+  redis:
+    image: redis:7-alpine
+    container_name: mikrom_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mikrom_network
+
   adminer:
     image: adminer:latest
     container_name: mikrom_adminer
@@ -40,16 +55,39 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
+      REDIS_URL: redis://redis:6379
     env_file:
       - .env
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mikrom_network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mikrom_worker
+    command: python run_worker.py
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
+      REDIS_URL: redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - mikrom_network
 
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   mikrom_network:

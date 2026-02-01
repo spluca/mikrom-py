@@ -4,11 +4,14 @@ from typing import AsyncGenerator
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 
 from mikrom.main import app
 from mikrom.api.deps import get_db
 from mikrom.config import settings
+from mikrom.models.user import User
+from mikrom.models.vm import VM, VMStatus
+from mikrom.core.security import get_password_hash
 
 # Test database URL (use different database for tests)
 TEST_DATABASE_URL = settings.DATABASE_URL.replace(
@@ -68,3 +71,38 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_user(db_session: AsyncSession) -> User:
+    """Create a test user for VM relationships."""
+    user = User(
+        email="test@example.com",
+        username="testuser",
+        hashed_password=get_password_hash("password123"),
+        full_name="Test User",
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_vm(db_session: AsyncSession, test_user: User) -> VM:
+    """Create a test VM for endpoint tests."""
+    vm = VM(
+        vm_id="srv-test1234",
+        name="test-vm",
+        description="Test VM for integration tests",
+        vcpu_count=2,
+        memory_mb=2048,
+        ip_address="192.168.1.100",
+        status=VMStatus.RUNNING,
+        host="hypervisor1.example.com",
+        user_id=test_user.id,
+    )
+    db_session.add(vm)
+    await db_session.commit()
+    await db_session.refresh(vm)
+    return vm
