@@ -119,7 +119,7 @@ class VMService:
                 event_type="vm.created",
                 data={
                     "name": name,
-                    "status": vm.status.value,
+                    "status": vm.status,
                     "user_id": vm.user_id,
                     "vcpu_count": vcpu_count,
                     "memory_mb": memory_mb,
