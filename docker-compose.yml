@@ -87,7 +87,6 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
       REDIS_URL: redis://redis:6379
-      IPPOOL_API_URL: http://ippool:8090
     env_file:
       - .env
     depends_on:

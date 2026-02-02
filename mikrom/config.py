@@ -70,6 +70,9 @@ class Settings(BaseSettings):
 
     # IP Pool configuration
     IPPOOL_API_URL: str = "http://localhost:8090"
+    # IP Pool URL for Ansible playbooks (must be accessible from Firecracker hosts)
+    # Defaults to IPPOOL_API_URL if not explicitly set
+    IPPOOL_EXTERNAL_API_URL: str | None = None
 
     # Firecracker configuration
     FIRECRACKER_DEPLOY_PATH: str = "/path/to/firecracker-deploy"

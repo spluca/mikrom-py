@@ -127,6 +127,12 @@ class FirecrackerClient:
                             raise FirecrackerError(error_msg)
 
                 if runner.status != "successful":
+                    # Extract stats before they're cleaned up
+                    try:
+                        failed_stats = runner.stats
+                    except Exception:
+                        failed_stats = {}
+
                     error_msg = (
                         f"Playbook {playbook} failed with status: {runner.status}"
                     )
@@ -139,37 +145,59 @@ class FirecrackerClient:
                             "playbook": playbook,
                             "status": runner.status,
                             "return_code": runner.rc,
-                            "stats": runner.stats,
+                            "stats": failed_stats,
                         },
                     )
 
                     # Try to get error details from events
-                    for event in runner.events:
-                        if event.get("event") == "runner_on_failed":
-                            event_data = event.get("event_data", {})
-                            task = event_data.get("task", "Unknown task")
-                            res = event_data.get("res", {})
-                            msg = res.get("msg", res.get("stderr", "No error details"))
+                    try:
+                        for event in runner.events:
+                            if event.get("event") == "runner_on_failed":
+                                event_data = event.get("event_data", {})
+                                task = event_data.get("task", "Unknown task")
+                                res = event_data.get("res", {})
+                                msg = res.get(
+                                    "msg", res.get("stderr", "No error details")
+                                )
 
-                            logger.error(
-                                "Ansible task failed",
-                                extra={
-                                    "playbook": playbook,
-                                    "task": task,
-                                    "error_message": msg,
-                                },
-                            )
+                                logger.error(
+                                    "Ansible task failed",
+                                    extra={
+                                        "playbook": playbook,
+                                        "task": task,
+                                        "error_message": msg,
+                                    },
+                                )
 
-                            add_span_event("task_failed", {"task": task, "error": msg})
+                                add_span_event(
+                                    "task_failed", {"task": task, "error": msg}
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            "Could not extract event details",
+                            extra={"error": str(e)},
+                        )
 
                     span.record_exception(Exception(error_msg))
                     raise FirecrackerError(error_msg)
+
+                # Extract stats and events while temp directory still exists
+                try:
+                    playbook_stats = runner.stats
+                    # Store stats as attribute for later access
+                    runner._extracted_stats = playbook_stats
+                except Exception as e:
+                    logger.warning(
+                        "Could not extract playbook stats",
+                        extra={"error": str(e)},
+                    )
+                    runner._extracted_stats = {}
 
                 logger.info(
                     "Playbook completed successfully",
                     extra={
                         "playbook": playbook,
-                        "stats": runner.stats,
+                        "stats": playbook_stats,
                     },
                 )
 
@@ -237,7 +265,8 @@ class FirecrackerClient:
             "fc_vm_id": vm_id,
             "fc_vcpu_count": vcpu_count,
             "fc_mem_size_mib": memory_mb,
-            "fc_ippool_server_url": settings.IPPOOL_API_URL,
+            "fc_ippool_server_url": settings.IPPOOL_EXTERNAL_API_URL
+            or settings.IPPOOL_API_URL,
         }
 
         if kernel_path:
@@ -248,7 +277,7 @@ class FirecrackerClient:
         return {
             "status": runner.status,
             "rc": runner.rc,
-            "stats": runner.stats,
+            "stats": getattr(runner, "_extracted_stats", {}),
         }
 
     async def stop_vm(self, vm_id: str, limit: Optional[str] = None) -> Dict[str, Any]:
@@ -271,7 +300,7 @@ class FirecrackerClient:
         return {
             "status": runner.status,
             "rc": runner.rc,
-            "stats": runner.stats,
+            "stats": getattr(runner, "_extracted_stats", {}),
         }
 
     async def cleanup_vm(
@@ -299,5 +328,5 @@ class FirecrackerClient:
         return {
             "status": runner.status,
             "rc": runner.rc,
-            "stats": runner.stats,
+            "stats": getattr(runner, "_extracted_stats", {}),
         }
