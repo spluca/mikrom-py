@@ -339,7 +339,7 @@ deploy-dev:
     on_stop: stop-dev
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: on_success
+      when: manual
 
 stop-dev:
   stage: deploy
