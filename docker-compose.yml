@@ -83,7 +83,7 @@ services:
   worker:
     image: mikrom-py:latest  # Reuses image built by 'app' service
     container_name: mikrom_worker
-    command: celery -A mikrom.celery_app worker --pool=gevent --concurrency=100 --loglevel=info
+    command: celery -A mikrom.celery_app worker --pool=${CELERY_WORKER_POOL:-prefork} --concurrency=${CELERY_WORKER_CONCURRENCY:-4} --loglevel=info
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
       REDIS_URL: redis://redis:6379
@@ -107,9 +107,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "celery -A mikrom.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   beat:

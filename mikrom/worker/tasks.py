@@ -3,6 +3,7 @@
 import asyncio
 from typing import Optional
 from sqlmodel import Session
+from celery.exceptions import SoftTimeLimitExceeded
 
 from mikrom.celery_app import celery_app
 from mikrom.database import sync_engine
@@ -152,6 +153,38 @@ async def _create_vm_task_async(
                 "ip_address": ip_address,
                 "status": "running",
             }
+
+        except SoftTimeLimitExceeded:
+            # Task is approaching time limit, cleanup gracefully
+            logger.warning(
+                "VM creation task approaching time limit, cleaning up",
+                extra={"vm_db_id": vm_db_id},
+            )
+            span.add_event("soft_time_limit_exceeded")
+
+            # Update VM status to error
+            with Session(sync_engine) as session:
+                vm = session.get(VM, vm_db_id)
+                if vm:
+                    vm.status = "error"
+                    vm.error_message = (
+                        "Task timed out - operation took too long to complete"
+                    )
+                    session.add(vm)
+                    session.commit()
+
+            # Try to cleanup IP if allocated
+            try:
+                if vm_id:
+                    logger.info("Attempting to cleanup IP allocation after timeout")
+                    await ippool.release_ip(vm_id)
+            except Exception as cleanup_error:
+                logger.error(
+                    "IP cleanup failed after timeout",
+                    extra={"error": str(cleanup_error)},
+                )
+
+            raise
 
         except Exception as e:
             logger.error(

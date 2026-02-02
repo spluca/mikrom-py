@@ -19,9 +19,9 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Timeout y reintentos
-    task_time_limit=300,  # 5 minutos (igual que arq)
-    task_soft_time_limit=280,  # Advertencia antes del límite
+    # Timeout y reintentos - usar valores de settings
+    task_time_limit=settings.CELERY_TASK_HARD_TIME_LIMIT,
+    task_soft_time_limit=settings.CELERY_TASK_SOFT_TIME_LIMIT,
     task_acks_late=True,  # Confirmar solo después de completar
     worker_prefetch_multiplier=1,  # Un job a la vez
     # Results
@@ -32,9 +32,10 @@ celery_app.conf.update(
     # Cola
     task_default_queue=settings.CELERY_QUEUE_NAME,
     task_queues=(Queue(settings.CELERY_QUEUE_NAME, routing_key="mikrom.#"),),
-    # Worker
-    worker_max_tasks_per_child=1000,
+    # Worker configuration
+    worker_max_tasks_per_child=1000,  # Restart worker after N tasks
     worker_disable_rate_limits=True,
+    worker_pool_restarts=True,  # Enable pool restarts for prefork
     # Imports
     imports=("mikrom.worker.tasks",),
     # Beat scheduler (para tareas programadas)

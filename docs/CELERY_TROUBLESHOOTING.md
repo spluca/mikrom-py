@@ -4,6 +4,162 @@
 
 ---
 
+## ⚠️ Docker Worker Showing as "Unhealthy"
+
+### Síntomas
+```bash
+$ docker compose ps worker
+NAME            STATUS
+mikrom_worker   Up 5 minutes (unhealthy)
+
+# Health check logs show:
+Error: No nodes replied within time constraint
+```
+
+### Causa Raíz
+El worker no puede responder a los health checks de Docker durante la ejecución de tareas de larga duración que bloquean el event loop. Esto ocurre especialmente con:
+- Operaciones SSH bloqueantes (Ansible playbooks)
+- Conexiones a hosts no alcanzables con timeouts largos
+- Pool `gevent` con operaciones I/O bloqueantes
+
+### Solución Implementada (v2.0+)
+
+Hemos implementado **4 mejoras** para resolver este problema:
+
+#### 1. Cambio de Pool: `gevent` → `prefork`
+```yaml
+# docker-compose.yml
+command: celery -A mikrom.celery_app worker --pool=prefork --concurrency=4
+```
+
+**Ventajas de prefork:**
+- ✅ Robusto para operaciones bloqueantes (SSH, subprocess)
+- ✅ Aislamiento completo entre workers
+- ✅ Timeout enforcement confiable
+- ✅ Worker puede responder a health checks incluso durante tareas largas
+
+**Configuración:**
+```bash
+# .env
+CELERY_WORKER_POOL=prefork
+CELERY_WORKER_CONCURRENCY=4  # Ajustar según CPU cores
+```
+
+#### 2. Timeouts Agresivos
+```bash
+# .env
+CELERY_TASK_SOFT_TIME_LIMIT=180  # 3 minutos - aviso
+CELERY_TASK_HARD_TIME_LIMIT=240  # 4 minutos - kill forzoso
+ANSIBLE_PLAYBOOK_TIMEOUT=120     # 2 minutos - timeout Ansible
+ANSIBLE_SSH_TIMEOUT=30           # 30 segundos - conexión SSH
+```
+
+Las tareas ahora tienen múltiples capas de protección:
+1. **Ansible timeout** (120s): Playbook se cancela automáticamente
+2. **Soft limit** (180s): Task recibe excepción `SoftTimeLimitExceeded`, puede hacer cleanup
+3. **Hard limit** (240s): Worker process es matado forzosamente (SIGKILL)
+
+#### 3. Health Check Más Tolerante
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "celery -A mikrom.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+  interval: 30s
+  timeout: 30s    # Aumentado de 10s
+  retries: 5      # Aumentado de 3
+  start_period: 30s  # Aumentado de 10s
+```
+
+El health check ahora espera más tiempo antes de marcar el worker como unhealthy.
+
+#### 4. Ansible en ThreadPoolExecutor
+```python
+# mikrom/clients/firecracker.py
+with ThreadPoolExecutor(max_workers=1) as executor:
+    future = executor.submit(ansible_runner.run, ...)
+    runner = future.result(timeout=settings.ANSIBLE_PLAYBOOK_TIMEOUT)
+```
+
+Ansible ahora se ejecuta en un thread separado con timeout enforcement real, evitando bloquear el worker principal.
+
+### Verificación
+
+**1. Comprobar pool actual:**
+```bash
+docker exec mikrom_worker celery -A mikrom.celery_app inspect active_queues
+```
+
+**2. Verificar health check:**
+```bash
+docker inspect mikrom_worker | jq '.[0].State.Health'
+```
+
+**3. Monitorear durante tarea larga:**
+```bash
+# Terminal 1: Crear VM
+curl -X POST http://localhost:8000/api/v1/vms -H "Authorization: Bearer $TOKEN" ...
+
+# Terminal 2: Monitorear health
+watch -n 5 'docker compose ps worker'
+```
+
+**Resultado esperado:** Worker debe permanecer **healthy** incluso durante ejecución de tareas.
+
+### Troubleshooting Adicional
+
+**Si el worker sigue unhealthy:**
+
+1. **Verificar configuración del pool:**
+```bash
+docker exec mikrom_worker bash -c 'ps aux | grep celery'
+# Debe mostrar: --pool=prefork --concurrency=4
+```
+
+2. **Verificar que se cargaron las configuraciones:**
+```bash
+docker exec mikrom_worker python -c "from mikrom.config import settings; print(f'Pool: {settings.CELERY_WORKER_POOL}, Timeout: {settings.ANSIBLE_PLAYBOOK_TIMEOUT}')"
+```
+
+3. **Revisar logs de timeouts:**
+```bash
+docker logs mikrom_worker 2>&1 | grep -i "timeout\|time limit"
+```
+
+4. **Aumentar recursos si es necesario:**
+```yaml
+# docker-compose.yml
+worker:
+  deploy:
+    resources:
+      limits:
+        memory: 2G
+      reservations:
+        memory: 1G
+```
+
+### Cuándo Ajustar Timeouts
+
+**Timeouts muy cortos** (tareas legítimas fallan):
+```bash
+# Aumentar gradualmente
+CELERY_TASK_SOFT_TIME_LIMIT=300  # 5 minutos
+CELERY_TASK_HARD_TIME_LIMIT=360  # 6 minutos
+ANSIBLE_PLAYBOOK_TIMEOUT=240     # 4 minutos
+```
+
+**Timeouts muy largos** (tasks colgadas demoran mucho en fallar):
+```bash
+# Reducir para fail-fast
+CELERY_TASK_SOFT_TIME_LIMIT=120  # 2 minutos
+CELERY_TASK_HARD_TIME_LIMIT=150  # 2.5 minutos
+ANSIBLE_PLAYBOOK_TIMEOUT=90      # 1.5 minutos
+```
+
+**Regla general:**
+- `ANSIBLE_PLAYBOOK_TIMEOUT` < `CELERY_TASK_SOFT_TIME_LIMIT` < `CELERY_TASK_HARD_TIME_LIMIT`
+- Diferencia de ~30-60 segundos entre cada nivel para permitir cleanup graceful
+
+---
+
 ## ❌ Workers no responden
 
 ### Síntomas

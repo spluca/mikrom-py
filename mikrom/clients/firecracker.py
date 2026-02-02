@@ -3,6 +3,7 @@
 import ansible_runner
 import shutil
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Optional, Dict, Any
 from mikrom.config import settings
@@ -47,7 +48,7 @@ class FirecrackerClient:
         self, playbook: str, extravars: Dict[str, Any], limit: Optional[str] = None
     ) -> ansible_runner.Runner:
         """
-        Run an Ansible playbook.
+        Run an Ansible playbook in a thread pool with timeout enforcement.
 
         Args:
             playbook: Playbook filename
@@ -58,7 +59,7 @@ class FirecrackerClient:
             ansible_runner.Runner instance
 
         Raises:
-            FirecrackerError: If playbook execution fails
+            FirecrackerError: If playbook execution fails or times out
         """
         with tracer.start_as_current_span(f"ansible.{playbook}") as span:
             # Add span attributes
@@ -66,6 +67,7 @@ class FirecrackerClient:
                 **{
                     "ansible.playbook": playbook,
                     "ansible.limit": limit or "all",
+                    "ansible.timeout": settings.ANSIBLE_PLAYBOOK_TIMEOUT,
                 }
             )
 
@@ -79,24 +81,50 @@ class FirecrackerClient:
                     "playbook": playbook,
                     "variables": extravars,
                     "limit": limit,
+                    "timeout": settings.ANSIBLE_PLAYBOOK_TIMEOUT,
                 },
             )
 
             # Use /tmp for artifacts since deploy_path may be read-only
             artifact_dir = Path(tempfile.mkdtemp(prefix="ansible-"))
 
+            def _execute_playbook():
+                """Execute ansible-runner in separate thread."""
+                return ansible_runner.run(
+                    playbook=playbook,
+                    private_data_dir=str(self.deploy_path),
+                    artifact_dir=str(artifact_dir),
+                    extravars=extravars,
+                    limit=limit,
+                    quiet=False,
+                    verbosity=0,
+                )
+
             try:
                 with log_timer(f"playbook_{playbook}", logger):
-                    runner = ansible_runner.run(
-                        playbook=playbook,
-                        private_data_dir=str(self.deploy_path),
-                        artifact_dir=str(artifact_dir),
-                        extravars=extravars,
-                        limit=limit,
-                        quiet=False,
-                        verbosity=0,
-                        timeout=180,  # 3 minutes timeout
-                    )
+                    # Execute in thread pool with timeout
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(_execute_playbook)
+                        try:
+                            runner = future.result(
+                                timeout=settings.ANSIBLE_PLAYBOOK_TIMEOUT
+                            )
+                        except FuturesTimeoutError:
+                            # Cancel the future and raise timeout error
+                            future.cancel()
+                            error_msg = (
+                                f"Playbook {playbook} execution timed out after "
+                                f"{settings.ANSIBLE_PLAYBOOK_TIMEOUT} seconds"
+                            )
+                            logger.error(
+                                "Playbook execution timeout",
+                                extra={
+                                    "playbook": playbook,
+                                    "timeout": settings.ANSIBLE_PLAYBOOK_TIMEOUT,
+                                },
+                            )
+                            span.record_exception(TimeoutError(error_msg))
+                            raise FirecrackerError(error_msg)
 
                 if runner.status != "successful":
                     error_msg = (

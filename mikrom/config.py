@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     CELERY_QUEUE_NAME: str = "mikrom:queue"
 
+    # Celery Worker Configuration
+    CELERY_WORKER_POOL: str = "prefork"  # prefork, threads, gevent, solo
+    CELERY_WORKER_CONCURRENCY: int = 4  # Number of worker processes/threads
+    CELERY_TASK_SOFT_TIME_LIMIT: int = 180  # 3 minutes - soft limit (warning)
+    CELERY_TASK_HARD_TIME_LIMIT: int = 240  # 4 minutes - hard limit (force kill)
+
     # Flower monitoring
     FLOWER_BASIC_AUTH: str = "admin:changeme"
     FLOWER_PORT: int = 5555
@@ -68,6 +74,10 @@ class Settings(BaseSettings):
     # Firecracker configuration
     FIRECRACKER_DEPLOY_PATH: str = "/path/to/firecracker-deploy"
     FIRECRACKER_DEFAULT_HOST: str | None = None
+
+    # Ansible Configuration
+    ANSIBLE_PLAYBOOK_TIMEOUT: int = 120  # 2 minutes - playbook execution timeout
+    ANSIBLE_SSH_TIMEOUT: int = 30  # 30 seconds - SSH connection timeout
 
     model_config = SettingsConfigDict(
         env_file=".env",
