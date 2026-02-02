@@ -203,38 +203,7 @@ db-reset: ## Resetear base de datos (CUIDADO: elimina todos los datos)
 	fi
 
 superuser: ## Crear superusuario
-	@echo "$(GREEN)Creando superusuario...$(NC)"
-	@$(PYTHON) -c "\
-from mikrom.database import sync_engine; \
-from mikrom.models import User; \
-from mikrom.core.security import get_password_hash; \
-from sqlmodel import Session; \
-import sys; \
-print('Email:', end=' '); \
-email = input(); \
-print('Username:', end=' '); \
-username = input(); \
-print('Password:', end=' '); \
-password = input(); \
-print('Full Name (opcional):', end=' '); \
-full_name = input() or None; \
-with Session(sync_engine) as session: \
-    existing = session.query(User).filter((User.email == email) | (User.username == username)).first(); \
-    if existing: \
-        print('❌ Error: Usuario con ese email o username ya existe'); \
-        sys.exit(1); \
-    user = User( \
-        email=email, \
-        username=username, \
-        hashed_password=get_password_hash(password), \
-        full_name=full_name, \
-        is_active=True, \
-        is_superuser=True \
-    ); \
-    session.add(user); \
-    session.commit(); \
-    print(f'✓ Superusuario {username} creado exitosamente'); \
-"
+	@$(PYTHON) scripts/create_superuser.py
 
 # ============================================================================
 # Utilidades

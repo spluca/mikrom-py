@@ -4,6 +4,102 @@ Este directorio contiene scripts de utilidad para probar y gestionar el proyecto
 
 ## Scripts Disponibles
 
+### `create_superuser.py` - Crear Superusuario
+
+Script interactivo para crear un nuevo superusuario en mikrom-py.
+
+#### ¿Qué hace este script?
+
+Crea un superusuario con permisos administrativos completos, incluyendo:
+- Acceso a todas las VMs del sistema (no solo las propias)
+- Capacidad de gestionar usuarios
+- Permisos completos de administración
+
+#### Prerequisitos
+
+- Base de datos configurada y accesible
+- Dependencias instaladas (`uv sync`)
+
+#### Uso
+
+**Opción 1: Usando Make (recomendado)**
+```bash
+make superuser
+```
+
+**Opción 2: Ejecutando el script directamente**
+```bash
+uv run python scripts/create_superuser.py
+```
+
+#### Ejemplo de Uso
+
+```bash
+$ make superuser
+
+============================================================
+  CREAR SUPERUSUARIO - mikrom-py
+============================================================
+
+Email: admin@example.com
+Username: admin
+Password: ********
+Confirmar Password: ********
+Full Name (opcional): Administrator
+
+============================================================
+✅ Superusuario creado exitosamente
+============================================================
+  ID:          1
+  Username:    admin
+  Email:       admin@example.com
+  Full Name:   Administrator
+  Superuser:   ✓ True
+  Active:      ✓ True
+============================================================
+```
+
+#### Validaciones
+
+El script incluye las siguientes validaciones:
+
+- ✅ **Email requerido**: Formato válido con '@'
+- ✅ **Username requerido**: No puede estar vacío
+- ✅ **Password requerido**: Mínimo 6 caracteres
+- ✅ **Confirmación de password**: Ambas contraseñas deben coincidir
+- ✅ **Usuario único**: Email y username no pueden estar duplicados
+
+#### Seguridad
+
+- Las contraseñas se ocultan durante la entrada usando `getpass()`
+- Las contraseñas se hashean con Argon2id (OWASP recomendado)
+- No se almacenan contraseñas en texto plano
+
+#### Troubleshooting
+
+**Problema: "Ya existe un usuario con ese email o username"**
+```bash
+# Verificar usuarios existentes
+docker exec mikrom_db psql -U postgres -d mikrom_db -c "SELECT id, username, email, is_superuser FROM users;"
+
+# O hacer superusuario a un usuario existente
+docker exec mikrom_db psql -U postgres -d mikrom_db -c "UPDATE users SET is_superuser = true WHERE username = 'admin';"
+```
+
+**Problema: "La contraseña debe tener al menos 6 caracteres"**
+```bash
+# Usar una contraseña más larga
+# Mínimo: 6 caracteres (recomendado: 8+ caracteres)
+```
+
+**Problema: "Las contraseñas no coinciden"**
+```bash
+# Asegúrate de escribir la misma contraseña dos veces
+# Tip: Usa un gestor de contraseñas para copiar/pegar
+```
+
+---
+
 ### `test-vm-lifecycle.sh` - Prueba del Ciclo de Vida de VMs
 
 Script bash completo para probar el ciclo de vida de una VM en mikrom-py, desde su creación hasta su eliminación.

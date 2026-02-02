@@ -245,6 +245,7 @@ async def delete_vm(
             "status": "deleting",
         }
 
+
 @router.post(
     "/{vm_id}/stop",
     status_code=status.HTTP_202_ACCEPTED,

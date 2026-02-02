@@ -2,7 +2,7 @@
 
 import secrets
 from typing import Optional, List
-from sqlmodel import select, func
+from sqlmodel import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mikrom.models import VM, User, VMStatus
@@ -134,6 +134,8 @@ class VMService:
         """
         Get user's VMs with pagination.
 
+        Superusers can see all VMs, regular users only see their own.
+
         Args:
             session: Database session
             user: User
@@ -143,21 +145,21 @@ class VMService:
         Returns:
             Tuple of (VMs list, total count)
         """
-        # Get VMs
-        statement = (
-            select(VM)
-            .where(VM.user_id == user.id)
-            .offset(offset)
-            .limit(limit)
-            .order_by(VM.created_at.desc())
-        )
+        # Get VMs (superusers see all VMs)
+        statement = select(VM).offset(offset).limit(limit).order_by(desc(VM.created_at))
+
+        if not user.is_superuser:
+            statement = statement.where(VM.user_id == user.id)
+
         result = await session.execute(statement)
         vms = list(result.scalars().all())
 
-        # Get total count
-        count_statement = (
-            select(func.count()).select_from(VM).where(VM.user_id == user.id)
-        )
+        # Get total count (superusers count all VMs)
+        count_statement = select(func.count()).select_from(VM)
+
+        if not user.is_superuser:
+            count_statement = count_statement.where(VM.user_id == user.id)
+
         count_result = await session.execute(count_statement)
         total = count_result.scalar_one()
 
