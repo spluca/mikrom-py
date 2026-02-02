@@ -63,6 +63,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: mikrom-py:latest  # Shared image for all Python services
     container_name: mikrom_app
     ports:
       - "8000:8000"
@@ -80,9 +81,7 @@ services:
       - mikrom_network
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: mikrom-py:latest  # Reuses image built by 'app' service
     container_name: mikrom_worker
     command: celery -A mikrom.celery_app worker --pool=gevent --concurrency=100 --loglevel=info
     environment:
@@ -114,9 +113,7 @@ services:
     restart: unless-stopped
 
   beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: mikrom-py:latest  # Reuses image built by 'app' service
     container_name: mikrom_beat
     command: celery -A mikrom.celery_app beat --loglevel=info
     environment:
@@ -140,9 +137,7 @@ services:
     restart: unless-stopped
 
   flower:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: mikrom-py:latest  # Reuses image built by 'app' service
     container_name: mikrom_flower
     command: celery -A mikrom.celery_app flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH}
     ports:

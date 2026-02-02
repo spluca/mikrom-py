@@ -249,18 +249,139 @@ COPY --from=builder /app/.venv /app/.venv
 - [Python Wheels](https://pythonwheels.com/)
 - [Debian Trixie](https://www.debian.org/releases/trixie/)
 
+## 🎯 Optimización de Imagen Compartida
+
+### Problema: Múltiples Servicios, Misma Imagen
+
+Anteriormente, cada servicio (app, worker, beat, flower) construía su propia imagen idéntica:
+
+```yaml
+# ❌ Configuración anterior (ineficiente)
+app:
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+worker:
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+beat:
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+flower:
+  build:
+    context: .
+    dockerfile: Dockerfile
+```
+
+**Problemas:**
+- 🐌 **Build 4× más lento**: Construye 4 imágenes idénticas
+- 💾 **Desperdicio de espacio**: 4 × 662MB = 2.6GB
+- 🔄 **Sin cache compartido**: Cada servicio reconstruye todo
+- ⏱️ **CI/CD más lento**: Más tiempo de transferencia
+
+### Solución: Build Compartido
+
+```yaml
+# ✅ Configuración actual (optimizada)
+app:
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: mikrom-py:latest  # Nombre explícito
+
+worker:
+  image: mikrom-py:latest  # Reutiliza imagen de app
+
+beat:
+  image: mikrom-py:latest  # Reutiliza imagen de app
+
+flower:
+  image: mikrom-py:latest  # Reutiliza imagen de app
+```
+
+**Beneficios:**
+- ⚡ **Build 4× más rápido**: Solo construye 1 imagen
+- 💾 **Ahorra ~2GB**: De 2.6GB a 662MB
+- 🔄 **Cache compartido**: Todos usan la misma imagen
+- 🚀 **Más eficiente**: Menos I/O de disco
+
+### Healthcheck por Servicio
+
+Cada servicio define su propio healthcheck en `docker-compose.yml`:
+
+```yaml
+app:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+
+worker:
+  healthcheck:
+    test: ["CMD-SHELL", "celery -A mikrom.celery_app inspect ping"]
+
+beat:
+  healthcheck:
+    test: ["CMD-SHELL", "test -f /tmp/celerybeat-schedule"]
+
+flower:
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://127.0.0.1:5555/healthcheck"]
+```
+
+Por eso se **eliminó el healthcheck del Dockerfile** - cada servicio necesita su propio check específico.
+
+### Comandos por Servicio
+
+Cada servicio sobreescribe el CMD del Dockerfile:
+
+```yaml
+# app: usa el CMD por defecto del Dockerfile
+# CMD ["python", "-m", "uvicorn", "mikrom.main:app", ...]
+
+worker:
+  command: celery -A mikrom.celery_app worker --pool=gevent --concurrency=100
+
+beat:
+  command: celery -A mikrom.celery_app beat --loglevel=info
+
+flower:
+  command: celery -A mikrom.celery_app flower --port=5555
+```
+
+### Resultados
+
+| Métrica | Antes | Después | Mejora |
+|---------|-------|---------|--------|
+| **Imágenes en disco** | 2.6GB (4 imgs) | 662MB (1 img) | -75% |
+| **Tiempo de build** | ~27 min (4×6:42) | ~7 min (1×6:42) | -74% |
+| **Espacio ahorrado** | - | ~2GB | 📦 |
+| **Cache compartido** | ❌ No | ✅ Sí | 🚀 |
+
 ## 🎉 Conclusión
 
-La migración de Alpine a Debian Trixie con optimizaciones de caché ha logrado:
+La combinación de optimizaciones ha logrado:
 
+### Migración Alpine → Debian Trixie
 - ✅ **99% más rápido** en rebuilds
 - ✅ **40% más rápido** en builds iniciales
 - ✅ **Sin compilación de Rust/Cargo**
-- ✅ **Caché efectivo** que funciona correctamente
-- ✅ **Tamaño de imagen similar** (~115 MB)
-- ✅ **Experiencia de desarrollo mejorada** dramáticamente
 
-**Tiempo de desarrollo ahorrado:**
-- Antes: 10-15 min por build completo, 1-2 min por cambio de código
-- Ahora: 7 min por build completo, **0.5 segundos** por cambio de código
-- **Ahorro: ~99.5% en ciclos de desarrollo** 🚀
+### Build Compartido
+- ✅ **75% menos espacio** en disco
+- ✅ **4× más rápido** en docker compose build
+- ✅ **Cache compartido** entre servicios
+
+### Resultado Final
+- **Desarrollo**: Cambios de código en **0.5 segundos** 🚀
+- **Builds completos**: De 27 minutos a **7 minutos** ⚡
+- **Espacio en disco**: Ahorro de **~2GB** 💾
+- **Experiencia de desarrollo**: **Dramáticamente mejorada** 🎯
+
+**Tiempo total ahorrado:**
+- Antes: 27 min build completo (4 servicios), 1-2 min por cambio
+- Ahora: 7 min build completo, **0.5 segundos** por cambio
+- **Ahorro: ~75% en builds, ~99.5% en desarrollo iterativo** 🚀
