@@ -18,6 +18,31 @@ logger = get_logger(__name__)
 tracer = get_tracer()
 
 
+def _run_async(coro):
+    """
+    Run an async coroutine, handling both cases:
+    - When called from sync context (Celery worker): use asyncio.run()
+    - When called from async context (tests): await the coroutine directly
+
+    This allows the same code to work in both Celery workers and async tests.
+    """
+    try:
+        # Try to get the running event loop
+        asyncio.get_running_loop()
+        # If we're here, there's already a loop running (e.g., pytest-asyncio)
+        # We need to create a task in the existing loop
+        import nest_asyncio
+
+        nest_asyncio.apply()
+        return asyncio.run(coro)
+    except RuntimeError:
+        # No event loop running, we can use asyncio.run() safely
+        return asyncio.run(coro)
+    except RuntimeError:
+        # No event loop running, we can use asyncio.run() safely
+        return asyncio.run(coro)
+
+
 # Wrapper interno para convertir funciones async a sync para Celery
 async def _create_vm_task_async(
     self,
@@ -236,7 +261,7 @@ def create_vm_task(
     host: Optional[str] = None,
 ) -> dict:
     """Sync wrapper for create_vm_task that runs the async version."""
-    return asyncio.run(
+    return _run_async(
         _create_vm_task_async(self, vm_db_id, vcpu_count, memory_mb, kernel_path, host)
     )
 
@@ -356,7 +381,7 @@ async def _delete_vm_task_async(
 @celery_app.task(name="delete_vm_task", bind=True, max_retries=3)
 def delete_vm_task(self, vm_db_id: int, vm_id: str, host: Optional[str] = None) -> dict:
     """Sync wrapper for delete_vm_task that runs the async version."""
-    return asyncio.run(_delete_vm_task_async(self, vm_db_id, vm_id, host))
+    return _run_async(_delete_vm_task_async(self, vm_db_id, vm_id, host))
 
 
 async def _stop_vm_task_async(
@@ -439,7 +464,7 @@ async def _stop_vm_task_async(
 @celery_app.task(name="stop_vm_task", bind=True, max_retries=3)
 def stop_vm_task(self, vm_db_id: int, vm_id: str, host: Optional[str] = None) -> dict:
     """Sync wrapper for stop_vm_task that runs the async version."""
-    return asyncio.run(_stop_vm_task_async(self, vm_db_id, vm_id, host))
+    return _run_async(_stop_vm_task_async(self, vm_db_id, vm_id, host))
 
 
 async def _start_vm_task_async(
@@ -558,7 +583,7 @@ def start_vm_task(
     host: Optional[str] = None,
 ) -> dict:
     """Sync wrapper for start_vm_task that runs the async version."""
-    return asyncio.run(
+    return _run_async(
         _start_vm_task_async(
             self, vm_db_id, vm_id, vcpu_count, memory_mb, kernel_path, host
         )
@@ -653,7 +678,7 @@ def restart_vm_task(
     host: Optional[str] = None,
 ) -> dict:
     """Sync wrapper for restart_vm_task that runs the async version."""
-    return asyncio.run(
+    return _run_async(
         _restart_vm_task_async(
             self, vm_db_id, vm_id, vcpu_count, memory_mb, kernel_path, host
         )

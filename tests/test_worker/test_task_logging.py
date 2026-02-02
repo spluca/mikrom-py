@@ -24,11 +24,10 @@ class TestCreateVMTaskLogging:
         """Clean up after tests."""
         clear_context()
 
-    @pytest.mark.asyncio
     @patch("mikrom.worker.tasks.Session")
     @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
-    async def test_create_vm_logs_all_steps(
+    def test_create_vm_logs_all_steps(
         self, mock_fc_client, mock_ippool_client, mock_session_class
     ):
         """Test that create_vm_task logs all major steps."""
@@ -65,7 +64,7 @@ class TestCreateVMTaskLogging:
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task
-        result = await create_vm_task(vm_db_id=1, vcpu_count=2, memory_mb=2048)
+        result = create_vm_task(vm_db_id=1, vcpu_count=2, memory_mb=2048)
 
         # Parse logs
         output = stream.getvalue()
@@ -91,11 +90,11 @@ class TestCreateVMTaskLogging:
 
         logger.removeHandler(handler)
 
-    @pytest.mark.asyncio
     @patch("mikrom.worker.tasks.Session")
     @patch("mikrom.worker.tasks.IPPoolClient")
-    async def test_create_vm_logs_error_and_cleanup(
-        self, mock_ippool_client, mock_session_class
+    @patch("mikrom.worker.tasks.FirecrackerClient")
+    def test_create_vm_logs_error_and_cleanup(
+        self, mock_fc_client, mock_ippool_client, mock_session_class
     ):
         """Test that create_vm_task logs errors and cleanup attempts."""
         # Set up logging capture
@@ -126,9 +125,13 @@ class TestCreateVMTaskLogging:
         mock_ippool_instance.close = AsyncMock()
         mock_ippool_client.return_value = mock_ippool_instance
 
+        # Mock Firecracker client (required even though not used in error path)
+        mock_fc_instance = AsyncMock()
+        mock_fc_client.return_value = mock_fc_instance
+
         # Execute task (should raise exception)
         with pytest.raises(Exception, match="IP allocation failed"):
-            await create_vm_task(vm_db_id=2, vcpu_count=2, memory_mb=2048)
+            create_vm_task(vm_db_id=2, vcpu_count=2, memory_mb=2048)
 
         # Parse logs
         output = stream.getvalue()
@@ -161,11 +164,10 @@ class TestDeleteVMTaskLogging:
         """Clean up after tests."""
         clear_context()
 
-    @pytest.mark.asyncio
     @patch("mikrom.worker.tasks.Session")
     @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
-    async def test_delete_vm_logs_all_steps(
+    def test_delete_vm_logs_all_steps(
         self, mock_fc_client, mock_ippool_client, mock_session_class
     ):
         """Test that delete_vm_task logs all major steps."""
@@ -201,7 +203,7 @@ class TestDeleteVMTaskLogging:
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task
-        result = await delete_vm_task(vm_db_id=10, vm_id="srv-delete123")
+        result = delete_vm_task(vm_db_id=10, vm_id="srv-delete123")
 
         # Parse logs
         output = stream.getvalue()
@@ -227,11 +229,10 @@ class TestDeleteVMTaskLogging:
 
         logger.removeHandler(handler)
 
-    @pytest.mark.asyncio
     @patch("mikrom.worker.tasks.Session")
     @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
-    async def test_delete_vm_continues_on_partial_failure(
+    def test_delete_vm_continues_on_partial_failure(
         self, mock_fc_client, mock_ippool_client, mock_session_class
     ):
         """Test that delete_vm_task continues even if cleanup steps fail."""
@@ -270,7 +271,7 @@ class TestDeleteVMTaskLogging:
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task (should still succeed)
-        result = await delete_vm_task(vm_db_id=11, vm_id="srv-partial123")
+        result = delete_vm_task(vm_db_id=11, vm_id="srv-partial123")
 
         # Parse logs
         output = stream.getvalue()

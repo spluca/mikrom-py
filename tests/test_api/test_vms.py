@@ -12,7 +12,7 @@ from mikrom.models.user import User
 async def test_create_vm_unauthorized(client: AsyncClient) -> None:
     """Test creating a VM without authentication."""
     response = await client.post(
-        "/api/v1/vms/",
+        "/api/v1/vms",
         json={
             "name": "test-vm",
             "vcpu_count": 2,
@@ -21,7 +21,7 @@ async def test_create_vm_unauthorized(client: AsyncClient) -> None:
     )
     assert response.status_code == 401
     response = await client.post(
-        "/api/v1/vms/",
+        "/api/v1/vms",
         json={
             "name": "test-vm",
             "vcpu_count": 2,
@@ -55,7 +55,7 @@ async def test_create_vm_invalid_name(client: AsyncClient) -> None:
 
     # Create VM with invalid name (spaces and special characters)
     response = await client.post(
-        "/api/v1/vms/",
+        "/api/v1/vms",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "name": "invalid name!@#",
@@ -90,7 +90,7 @@ async def test_create_vm_invalid_resources(client: AsyncClient) -> None:
 
     # Too many vCPUs
     response = await client.post(
-        "/api/v1/vms/",
+        "/api/v1/vms",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "name": "test-vm",
@@ -102,7 +102,7 @@ async def test_create_vm_invalid_resources(client: AsyncClient) -> None:
 
     # Too little memory
     response = await client.post(
-        "/api/v1/vms/",
+        "/api/v1/vms",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "name": "test-vm",
@@ -128,7 +128,7 @@ async def test_list_vms(client: AsyncClient, test_user: User, test_vm: VM) -> No
 
     # List VMs
     response = await client.get(
-        "/api/v1/vms/?page=1&page_size=10",
+        "/api/v1/vms?page=1&page_size=10",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
@@ -145,7 +145,7 @@ async def test_list_vms(client: AsyncClient, test_user: User, test_vm: VM) -> No
 @pytest.mark.asyncio
 async def test_list_vms_unauthorized(client: AsyncClient) -> None:
     """Test listing VMs without authentication."""
-    response = await client.get("/api/v1/vms/")
+    response = await client.get("/api/v1/vms")
     assert response.status_code == 401
 
 
@@ -179,7 +179,7 @@ async def test_list_vms_pagination(
 
     # Get first page
     response = await client.get(
-        "/api/v1/vms/?page=1&page_size=10",
+        "/api/v1/vms?page=1&page_size=10",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
@@ -191,7 +191,7 @@ async def test_list_vms_pagination(
 
     # Get second page
     response = await client.get(
-        "/api/v1/vms/?page=2&page_size=10",
+        "/api/v1/vms?page=2&page_size=10",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
@@ -471,7 +471,7 @@ async def test_list_vms_only_shows_own(
 
     # List VMs for second user (should be empty)
     response = await client.get(
-        "/api/v1/vms/",
+        "/api/v1/vms",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
