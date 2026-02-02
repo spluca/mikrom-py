@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mikrom.models import VM, User, VMStatus
 from mikrom.config import settings
+from mikrom.events.publisher import EventPublisher
 from mikrom.utils.logger import get_logger
 from mikrom.utils.context import set_context
 from mikrom.utils.telemetry import get_tracer, add_span_attributes
@@ -109,6 +110,19 @@ class VMService:
                 extra={
                     "vm_db_id": vm.id,
                     "status": vm.status,
+                },
+            )
+
+            # Publish VM created event
+            await EventPublisher.publish_vm_event(
+                vm_id=vm_id,
+                event_type="vm.created",
+                data={
+                    "name": name,
+                    "status": vm.status.value,
+                    "user_id": vm.user_id,
+                    "vcpu_count": vcpu_count,
+                    "memory_mb": memory_mb,
                 },
             )
 

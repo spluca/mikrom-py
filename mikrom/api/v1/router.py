@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from mikrom.api.v1.endpoints import auth, users, health, vms
+from mikrom.api.v1.endpoints import auth, users, health, vms, events
 
 # Create main API v1 router
 api_router = APIRouter()
@@ -30,4 +30,10 @@ api_router.include_router(
     vms.router,
     prefix="/vms",
     tags=["VMs"],
+)
+
+api_router.include_router(
+    events.router,
+    prefix="/events",
+    tags=["Events"],
 )

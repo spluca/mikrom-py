@@ -10,6 +10,7 @@ from mikrom.database import sync_engine
 from mikrom.models import VM
 from mikrom.clients.ippool import IPPoolClient
 from mikrom.clients.firecracker import FirecrackerClient
+from mikrom.events.publisher import EventPublisher
 from mikrom.utils.logger import get_logger, log_timer
 from mikrom.utils.context import set_context
 from mikrom.utils.telemetry import get_tracer, add_span_attributes, add_span_event
@@ -127,8 +128,22 @@ async def _create_vm_task_async(
                     session.add(vm)
                     session.commit()
 
+                    # Get user_id for event
+                    user_id = vm.user_id
+
                 logger.info(
                     "VM status updated to provisioning", extra={"ip": ip_address}
+                )
+
+                # Publish status change event
+                EventPublisher.publish_vm_event_sync(
+                    vm_id=vm_id,
+                    event_type="vm.status_change",
+                    data={
+                        "status": "provisioning",
+                        "ip_address": ip_address,
+                        "user_id": user_id,
+                    },
                 )
 
             # Step 2: Start VM with Firecracker
@@ -161,7 +176,22 @@ async def _create_vm_task_async(
                     session.add(vm)
                     session.commit()
 
+                    # Get user_id for event
+                    user_id = vm.user_id
+
                 logger.info("VM status updated to running")
+
+                # Publish status change event
+                EventPublisher.publish_vm_event_sync(
+                    vm_id=vm_id,
+                    event_type="vm.status_change",
+                    data={
+                        "status": "running",
+                        "ip_address": ip_address,
+                        "host": host,
+                        "user_id": user_id,
+                    },
+                )
 
             logger.info(
                 "VM created successfully",
@@ -229,6 +259,20 @@ async def _create_vm_task_async(
                     vm.error_message = str(e)
                     session.add(vm)
                     session.commit()
+
+                    # Get user_id for event
+                    user_id = vm.user_id
+
+                    # Publish error event
+                    EventPublisher.publish_vm_event_sync(
+                        vm_id=vm_id,
+                        event_type="vm.status_change",
+                        data={
+                            "status": "error",
+                            "error_message": str(e),
+                            "user_id": user_id,
+                        },
+                    )
 
             # Try to cleanup IP if allocated
             try:
