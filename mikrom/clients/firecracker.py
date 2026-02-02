@@ -1,6 +1,8 @@
 """Client for Firecracker VM management via Ansible."""
 
 import ansible_runner
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 from mikrom.config import settings
@@ -80,11 +82,15 @@ class FirecrackerClient:
                 },
             )
 
+            # Use /tmp for artifacts since deploy_path may be read-only
+            artifact_dir = Path(tempfile.mkdtemp(prefix="ansible-"))
+
             try:
                 with log_timer(f"playbook_{playbook}", logger):
                     runner = ansible_runner.run(
                         playbook=playbook,
                         private_data_dir=str(self.deploy_path),
+                        artifact_dir=str(artifact_dir),
                         extravars=extravars,
                         limit=limit,
                         quiet=False,
@@ -157,6 +163,23 @@ class FirecrackerClient:
                 )
                 span.record_exception(e)
                 raise FirecrackerError(error_msg) from e
+            finally:
+                # Clean up temporary artifact directory
+                try:
+                    if artifact_dir.exists():
+                        shutil.rmtree(artifact_dir)
+                        logger.debug(
+                            "Cleaned up artifact directory",
+                            extra={"artifact_dir": str(artifact_dir)},
+                        )
+                except Exception as cleanup_error:
+                    logger.warning(
+                        "Failed to clean up artifact directory",
+                        extra={
+                            "artifact_dir": str(artifact_dir),
+                            "error": str(cleanup_error),
+                        },
+                    )
 
     async def start_vm(
         self,
