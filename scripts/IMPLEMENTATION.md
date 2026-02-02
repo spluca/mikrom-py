@@ -288,7 +288,7 @@ Antes de ejecutar, asegúrate de tener:
    ```
 
 4. **Infraestructura (opcional para test completo):**
-   - ippool (puerto 8080)
+   - IP pool configurado en base de datos
    - firecracker-deploy configurado
    - Servidor KVM con SSH
 

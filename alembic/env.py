@@ -7,7 +7,6 @@ from alembic import context
 
 # Import settings and models for autogenerate support
 from mikrom.config import settings
-from mikrom.models import User  # Import all models here
 from sqlmodel import SQLModel
 
 # this is the Alembic Config object, which provides

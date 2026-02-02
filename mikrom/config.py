@@ -68,11 +68,11 @@ class Settings(BaseSettings):
     FLOWER_BASIC_AUTH: str = "admin:changeme"
     FLOWER_PORT: int = 5555
 
-    # IP Pool configuration
-    IPPOOL_API_URL: str = "http://localhost:8090"
-    # IP Pool URL for Ansible playbooks (must be accessible from Firecracker hosts)
-    # Defaults to IPPOOL_API_URL if not explicitly set
-    IPPOOL_EXTERNAL_API_URL: str | None = None
+    # IP Pool configuration (internal service)
+    IPPOOL_DEFAULT_NETWORK: str = "172.16.0"
+    IPPOOL_DEFAULT_CIDR: str = "172.16.0.0/24"
+    IPPOOL_DEFAULT_GATEWAY: str = "172.16.0.1"
+    IPPOOL_DEFAULT_POOL_NAME: str = "default"
 
     # Firecracker configuration
     FIRECRACKER_DEPLOY_PATH: str = "/path/to/firecracker-deploy"

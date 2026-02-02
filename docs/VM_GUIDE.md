@@ -17,9 +17,13 @@ La integración de gestión de microVMs Firecracker en mikrom-py ha sido complet
 - `VMResponse` - Respuesta de API
 - `VMListResponse` - Lista paginada
 
-#### 3. **Clientes Externos** ✅
-- `IPPoolClient` - Gestión de IPs
-- `FirecrackerClient` - Ejecución de Ansible
+#### 3. **IP Pool Management** ✅
+- `IPPoolService` - Gestión interna de IPs en PostgreSQL
+- Asignación automática de IPs
+- Liberación de IPs al eliminar VMs
+
+#### 4. **Firecracker Client** ✅
+- `FirecrackerClient` - Ejecución de Ansible para Firecracker
 
 #### 4. **Background Tasks** ✅
 - `create_vm_task` - Crear y arrancar VM
@@ -53,7 +57,7 @@ Antes de crear VMs, asegúrate de tener:
 
 1. **PostgreSQL corriendo** ✅ (ya está con docker-compose)
 2. **Redis corriendo** ✅ (ya está con docker-compose)
-3. **ippool corriendo** en puerto 8080
+3. **IP Pool configurado en la base de datos**
 4. **firecracker-deploy** configurado
 5. **Servidor con KVM** accesible vía SSH
 
@@ -217,8 +221,8 @@ docker compose logs worker
 # Verificar que Redis está corriendo
 docker compose ps redis
 
-# Verificar que ippool está corriendo
-curl http://localhost:8080/api/v1/health
+# Verificar que IP pool existe en la base de datos
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT * FROM ip_pools WHERE is_active = true;"
 ```
 
 ### Error: "Firecracker deploy path does not exist"
@@ -236,7 +240,7 @@ docker compose restart worker
 
 ### VM en estado "error"
 
-**Causa:** Fallo en Ansible o ippool
+**Causa:** Fallo en Ansible o en asignación de IP
 
 **Solución:**
 ```bash
@@ -276,7 +280,7 @@ Accede a la documentación interactiva:
 
 ```bash
 # VM Management
-IPPOOL_API_URL=http://localhost:8080
+IPPOOL_DEFAULT_POOL_NAME=default
 FIRECRACKER_DEPLOY_PATH=/path/to/firecracker-deploy
 FIRECRACKER_DEFAULT_HOST=  # Opcional: limitar a un host
 
@@ -307,7 +311,7 @@ docker compose down
 
 - [x] PostgreSQL corriendo
 - [x] Redis corriendo
-- [ ] ippool corriendo en puerto 8080
+- [ ] IP Pool configurado en base de datos (tabla ip_pools)
 - [ ] firecracker-deploy configurado
 - [ ] SSH a hosts de VMs funciona
 - [ ] Network bridge configurado (make network-setup)

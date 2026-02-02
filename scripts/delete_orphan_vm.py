@@ -45,67 +45,67 @@ async def main():
     print("ELIMINACIÓN DE VM HUÉRFANA DE FIRECRACKER")
     print("=" * 70)
 
-    print(f"\n📋 Información de la VM:")
+    print("\n📋 Información de la VM:")
     print(f"   ID: {VM_ID}")
     print(f"   Host: {HOST} ({HOST_IP})")
 
     # Check if VM is running
-    print(f"\n🔍 Verificando si la VM está corriendo...")
+    print("\n🔍 Verificando si la VM está corriendo...")
     is_running = await check_vm_process(VM_ID, HOST_IP)
 
     if is_running:
-        print(f"   ✓ VM encontrada corriendo en el host")
+        print("   ✓ VM encontrada corriendo en el host")
     else:
-        print(f"   ⚠️  VM no encontrada corriendo (puede estar ya detenida)")
+        print("   ⚠️  VM no encontrada corriendo (puede estar ya detenida)")
         response = input("\n¿Continuar con la limpieza de recursos? (s/n): ")
         if response.lower() != "s":
             print("Operación cancelada")
             return
 
     # Initialize FirecrackerClient
-    print(f"\n🔧 Inicializando FirecrackerClient...")
+    print("\n🔧 Inicializando FirecrackerClient...")
     try:
         client = FirecrackerClient()
-        print(f"   ✓ Cliente inicializado")
+        print("   ✓ Cliente inicializado")
         print(f"   ✓ Deploy path: {client.deploy_path}")
     except FirecrackerError as e:
         print(f"   ✗ Error: {e}")
         return
 
     # Delete VM
-    print(f"\n🗑️  Ejecutando cleanup de VM...")
-    print(f"   Esto incluirá:")
-    print(f"   - Detener proceso de Firecracker")
-    print(f"   - Eliminar directorio jail")
-    print(f"   - Eliminar dispositivo TAP")
-    print(f"   - Liberar IP del pool (si existe)")
-    print(f"   - Eliminar logs")
+    print("\n🗑️  Ejecutando cleanup de VM...")
+    print("   Esto incluirá:")
+    print("   - Detener proceso de Firecracker")
+    print("   - Eliminar directorio jail")
+    print("   - Eliminar dispositivo TAP")
+    print("   - Liberar IP del pool (si existe)")
+    print("   - Eliminar logs")
 
     try:
         result = await client.cleanup_vm(vm_id=VM_ID, limit=HOST)
 
-        print(f"\n✅ Cleanup completado exitosamente!")
+        print("\n✅ Cleanup completado exitosamente!")
         print(f"   Status: {result['status']}")
         print(f"   Return code: {result['rc']}")
         print(f"   Stats: {result['stats']}")
 
     except FirecrackerError as e:
-        print(f"\n❌ Error durante el cleanup:")
+        print("\n❌ Error durante el cleanup:")
         print(f"   {e}")
         return
 
     # Verify VM is stopped
-    print(f"\n🔍 Verificando que la VM fue detenida...")
+    print("\n🔍 Verificando que la VM fue detenida...")
     is_still_running = await check_vm_process(VM_ID, HOST_IP)
 
     if is_still_running:
-        print(f"   ⚠️  La VM aún parece estar corriendo")
-        print(f"   Puede ser necesario forzar la terminación del proceso")
+        print("   ⚠️  La VM aún parece estar corriendo")
+        print("   Puede ser necesario forzar la terminación del proceso")
     else:
-        print(f"   ✓ VM detenida correctamente")
+        print("   ✓ VM detenida correctamente")
 
     # Summary
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print("RESUMEN")
     print("=" * 70)
     print(f"  VM ID: {VM_ID}")
@@ -113,7 +113,7 @@ async def main():
     print(
         f"  Estado: {'ELIMINADA' if not is_still_running else 'ERROR - AÚN CORRIENDO'}"
     )
-    print(f"\n✅ La VM huérfana ha sido limpiada del sistema")
+    print("\n✅ La VM huérfana ha sido limpiada del sistema")
 
 
 if __name__ == "__main__":

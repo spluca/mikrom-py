@@ -71,11 +71,11 @@ mikrom-py/
 │   │           └── health.py   # Health check
 │   ├── clients/                # External service clients
 │   │   ├── __init__.py
-│   │   ├── ippool.py           # IP Pool client
 │   │   └── firecracker.py      # Firecracker deployment client
 │   ├── services/               # Business logic
 │   │   ├── __init__.py
-│   │   └── vm_service.py       # VM service
+│   │   ├── vm_service.py       # VM service
+│   │   └── ippool_service.py   # IP Pool management (internal)
 │   ├── worker/                 # Background tasks
 │   │   ├── __init__.py
 │   │   ├── settings.py         # Worker configuration
@@ -409,7 +409,7 @@ All configurations are managed through environment variables in the `.env` file:
 | `RATE_LIMIT_PER_MINUTE` | Requests limit per minute | `60` |
 | `LOG_LEVEL` | Logging level | `INFO` |
 | **VM Management** |
-| `IPPOOL_API_URL` | IP Pool service URL | `http://localhost:8080` |
+| `IPPOOL_DEFAULT_POOL_NAME` | Default IP pool name | `default` |
 | `FIRECRACKER_DEPLOY_PATH` | Path to firecracker-deploy repo | - |
 | `FIRECRACKER_DEFAULT_HOST` | Default KVM host (optional) | - |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
@@ -518,7 +518,7 @@ For detailed information about VM management, see [VM_GUIDE.md](VM_GUIDE.md).
 
 ### Prerequisites for VM Management
 
-1. **IP Pool Service** running at `http://localhost:8080` (or configured URL)
+1. **IP Pool** configured in database (see migration for default pool)
 2. **firecracker-deploy** repository configured with target hosts
 3. **KVM Server** with SSH access and proper setup
 4. **Redis** running for background task queue
@@ -598,8 +598,8 @@ docker compose logs worker
 # Verify Redis is running
 docker compose ps redis
 
-# Verify ippool is accessible
-curl http://localhost:8080/api/v1/health
+# Check IP pool in database
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT * FROM ip_pools;"
 ```
 
 ## Documentation

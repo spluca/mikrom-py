@@ -155,7 +155,7 @@ Antes de ejecutar el script, asegúrate de tener:
    ```
 
 4. **Servicios de infraestructura (para prueba completa):**
-   - **ippool** corriendo en http://localhost:8080
+   - **IP Pool** configurado en la base de datos
    - **firecracker-deploy** configurado
    - **Servidor KVM** con SSH accesible
 
@@ -353,7 +353,7 @@ API_USERNAME="tu_usuario" API_PASSWORD="tu_password" ./scripts/test-vm-lifecycle
 
 **Problema: "Timeout esperando que la VM esté running"**
 
-Esto es normal si no tienes la infraestructura completa (ippool, firecracker-deploy, KVM). El script igualmente probará las operaciones de API:
+Esto es normal si no tienes la infraestructura completa (IP pool, firecracker-deploy, KVM). El script igualmente probará las operaciones de API:
 
 ```bash
 # Reducir el timeout para probar más rápido
@@ -362,9 +362,8 @@ MAX_WAIT_TIME=10 ./scripts/test-vm-lifecycle.sh
 
 O configurar la infraestructura completa:
 ```bash
-# 1. Iniciar ippool
-cd ../ippool
-cargo run
+# 1. Verificar IP pool en base de datos
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT * FROM ip_pools;"
 
 # 2. Verificar firecracker-deploy
 cd ../firecracker-deploy
@@ -507,7 +506,7 @@ uv run python scripts/delete_orphan_vm.py
 - Uses the FirecrackerClient API to call the Ansible `cleanup-vm.yml` playbook
 - Stops the Firecracker process (if running)
 - Removes jail directory: `/srv/jailer/firecracker/{vm_id}`
-- Releases IP from IP Pool
+- Releases IP from IP Pool (in database)
 - Removes TAP network device
 - Removes VM logs
 
@@ -574,8 +573,8 @@ ssh root@192.168.123.215 "ps aux | grep firecracker | grep -v grep"
 # Check TAP devices
 ssh root@192.168.123.215 "ip link show | grep tap"
 
-# Check IP Pool assignments
-curl -s http://192.168.123.1:8090/api/v1/assignments | python3 -m json.tool
+# Check IP Pool assignments in database
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT vm_id, ip_address FROM ip_allocations WHERE is_active = true;"
 ```
 
 ### Manual Cleanup
@@ -590,8 +589,8 @@ ssh root@192.168.123.215 "ip link delete tap-{short_id}"
 # Remove logs
 ssh root@192.168.123.215 "rm -f /tmp/firecracker-{vm_id}.log"
 
-# Release IP from pool
-curl -X DELETE http://192.168.123.1:8090/api/v1/ip/release/{vm_id}
+# Release IP from pool (happens automatically in database when VM is deleted)
+docker compose exec db psql -U postgres -d mikrom_db -c "UPDATE ip_allocations SET is_active = false WHERE vm_id = '{vm_id}';"
 ```
 
 ---
@@ -626,7 +625,7 @@ After cleanup, you want to ensure all resources were removed.
 1. **These scripts modify production resources** - Always verify the VM ID before deletion
 2. **No undo** - Once deleted, VM data cannot be recovered
 3. **Database not modified** - These scripts only clean remote resources, not database entries
-4. **IP Pool** - IPs are released automatically by the Ansible playbook
+4. **IP Pool** - IPs are released automatically (marked as inactive in database)
 5. **TAP devices** - Automatically removed, but check if any orphans remain
 
 ---

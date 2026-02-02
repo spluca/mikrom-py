@@ -265,8 +265,6 @@ class FirecrackerClient:
             "fc_vm_id": vm_id,
             "fc_vcpu_count": vcpu_count,
             "fc_mem_size_mib": memory_mb,
-            "fc_ippool_server_url": settings.IPPOOL_EXTERNAL_API_URL
-            or settings.IPPOOL_API_URL,
         }
 
         if kernel_path:
@@ -321,7 +319,6 @@ class FirecrackerClient:
         """
         extravars = {
             "fc_vm_id": vm_id,
-            "fc_ippool_server_url": settings.IPPOOL_API_URL,
         }
         runner = self._run_playbook("cleanup-vm.yml", extravars, limit)
 

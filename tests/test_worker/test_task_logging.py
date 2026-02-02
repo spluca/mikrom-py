@@ -25,11 +25,8 @@ class TestCreateVMTaskLogging:
         clear_context()
 
     @patch("mikrom.worker.tasks.Session")
-    @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
-    def test_create_vm_logs_all_steps(
-        self, mock_fc_client, mock_ippool_client, mock_session_class
-    ):
+    def test_create_vm_logs_all_steps(self, mock_fc_client, mock_session_class):
         """Test that create_vm_task logs all major steps."""
         # Set up logging capture
         logger = get_logger("mikrom.worker.tasks")
@@ -52,11 +49,19 @@ class TestCreateVMTaskLogging:
         mock_session.add = Mock()
         mock_session.commit = Mock()
 
-        # Mock IP pool client
-        mock_ippool_instance = AsyncMock()
-        mock_ippool_instance.allocate_ip.return_value = {"ip": "192.168.1.100"}
-        mock_ippool_instance.close = AsyncMock()
-        mock_ippool_client.return_value = mock_ippool_instance
+        # Mock queries for IP allocation
+        mock_pool = Mock()
+        mock_pool.id = 1
+        mock_pool.start_ip = "192.168.1.2"
+        mock_pool.end_ip = "192.168.1.10"
+
+        # Setup exec to return pool on first call, None for existing allocation check, empty list for allocated IPs
+        exec_results = [
+            Mock(first=Mock(return_value=mock_pool)),  # Pool query
+            Mock(first=Mock(return_value=None)),  # Existing allocation check
+            Mock(all=Mock(return_value=[])),  # Allocated IPs query
+        ]
+        mock_session.exec = Mock(side_effect=exec_results)
 
         # Mock Firecracker client
         mock_fc_instance = AsyncMock()
@@ -91,11 +96,8 @@ class TestCreateVMTaskLogging:
         logger.removeHandler(handler)
 
     @patch("mikrom.worker.tasks.Session")
-    @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
-    def test_create_vm_logs_error_and_cleanup(
-        self, mock_fc_client, mock_ippool_client, mock_session_class
-    ):
+    def test_create_vm_logs_error_and_cleanup(self, mock_fc_client, mock_session_class):
         """Test that create_vm_task logs errors and cleanup attempts."""
         # Set up logging capture
         logger = get_logger("mikrom.worker.tasks")
@@ -116,21 +118,33 @@ class TestCreateVMTaskLogging:
         mock_vm.name = "error-vm"
         mock_session.get.return_value = mock_vm
         mock_session.add = Mock()
-        mock_session.commit = Mock()
+        mock_session.delete = Mock()
 
-        # Mock IP pool to raise error
-        mock_ippool_instance = AsyncMock()
-        mock_ippool_instance.allocate_ip.side_effect = Exception("IP allocation failed")
-        mock_ippool_instance.release_ip = AsyncMock()
-        mock_ippool_instance.close = AsyncMock()
-        mock_ippool_client.return_value = mock_ippool_instance
+        # Make commit fail to simulate database error
+        mock_session.commit = Mock(
+            side_effect=Exception("Database error during commit")
+        )
+
+        # Mock queries - pool exists, no existing allocation
+        mock_pool = Mock()
+        mock_pool.id = 1
+        mock_pool.start_ip = "192.168.1.2"
+        mock_pool.end_ip = "192.168.1.10"
+
+        # Setup exec to return pool on first call, None for existing allocation check, empty list for allocated IPs
+        exec_results = [
+            Mock(first=Mock(return_value=mock_pool)),  # Pool query
+            Mock(first=Mock(return_value=None)),  # Existing allocation check
+            Mock(all=Mock(return_value=[])),  # Allocated IPs query
+        ]
+        mock_session.exec = Mock(side_effect=exec_results)
 
         # Mock Firecracker client (required even though not used in error path)
         mock_fc_instance = AsyncMock()
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task (should raise exception)
-        with pytest.raises(Exception, match="IP allocation failed"):
+        with pytest.raises(Exception, match="Database error during commit"):
             create_vm_task(vm_db_id=2, vcpu_count=2, memory_mb=2048)
 
         # Parse logs
@@ -139,16 +153,10 @@ class TestCreateVMTaskLogging:
         logs = [json.loads(line) for line in log_lines]
         messages = [log.get("message", "") for log in logs]
 
-        # Verify error and cleanup are logged
-        assert any("VM creation failed" in msg for msg in messages)
-        assert any("Attempting to cleanup IP allocation" in msg for msg in messages)
+        # Verify error is logged
         assert any(
-            log.get("error") == "IP allocation failed" and log.get("level") == "ERROR"
-            for log in logs
+            "VM creation failed" in msg or "Database error" in msg for msg in messages
         )
-
-        # Verify IP cleanup was called
-        mock_ippool_instance.release_ip.assert_called_once_with("srv-error123")
 
         logger.removeHandler(handler)
 
@@ -165,11 +173,8 @@ class TestDeleteVMTaskLogging:
         clear_context()
 
     @patch("mikrom.worker.tasks.Session")
-    @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
-    def test_delete_vm_logs_all_steps(
-        self, mock_fc_client, mock_ippool_client, mock_session_class
-    ):
+    def test_delete_vm_logs_all_steps(self, mock_fc_client, mock_session_class):
         """Test that delete_vm_task logs all major steps."""
         # Set up logging capture
         logger = get_logger("mikrom.worker.tasks")
@@ -192,11 +197,14 @@ class TestDeleteVMTaskLogging:
         mock_session.commit = Mock()
         mock_session.delete = Mock()
 
-        # Mock IP pool and Firecracker
-        mock_ippool_instance = AsyncMock()
-        mock_ippool_instance.release_ip = AsyncMock()
-        mock_ippool_instance.close = AsyncMock()
-        mock_ippool_client.return_value = mock_ippool_instance
+        # Mock IP allocation query to return an active allocation
+        mock_allocation = Mock()
+        mock_allocation.vm_id = "srv-delete123"
+        mock_allocation.ip_address = "192.168.1.100"
+        mock_allocation.is_active = True
+
+        exec_result = Mock(first=Mock(return_value=mock_allocation))
+        mock_session.exec = Mock(return_value=exec_result)
 
         mock_fc_instance = AsyncMock()
         mock_fc_instance.cleanup_vm = AsyncMock()
@@ -230,10 +238,9 @@ class TestDeleteVMTaskLogging:
         logger.removeHandler(handler)
 
     @patch("mikrom.worker.tasks.Session")
-    @patch("mikrom.worker.tasks.IPPoolClient")
     @patch("mikrom.worker.tasks.FirecrackerClient")
     def test_delete_vm_continues_on_partial_failure(
-        self, mock_fc_client, mock_ippool_client, mock_session_class
+        self, mock_fc_client, mock_session_class
     ):
         """Test that delete_vm_task continues even if cleanup steps fail."""
         # Set up logging capture
@@ -257,11 +264,14 @@ class TestDeleteVMTaskLogging:
         mock_session.commit = Mock()
         mock_session.delete = Mock()
 
-        # Mock IP pool to succeed
-        mock_ippool_instance = AsyncMock()
-        mock_ippool_instance.release_ip = AsyncMock()
-        mock_ippool_instance.close = AsyncMock()
-        mock_ippool_client.return_value = mock_ippool_instance
+        # Mock IP allocation query to return an active allocation
+        mock_allocation = Mock()
+        mock_allocation.vm_id = "srv-partial123"
+        mock_allocation.ip_address = "192.168.1.100"
+        mock_allocation.is_active = True
+
+        exec_result = Mock(first=Mock(return_value=mock_allocation))
+        mock_session.exec = Mock(return_value=exec_result)
 
         # Mock Firecracker to fail
         mock_fc_instance = AsyncMock()

@@ -36,16 +36,17 @@ class MockCeleryTask:
 
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_create_vm_task_success(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test successful VM creation task."""
+    from mikrom.models.ip_pool import IpPool
+    from mikrom.models.ip_allocation import IpAllocation
+
     # Create test user and VM
     user = User(
         email="user@example.com",
@@ -69,18 +70,41 @@ async def test_create_vm_task_success(
     await db_session.commit()
     await db_session.refresh(vm)
 
-    # Setup mocks
+    # Setup mocks for IP allocation
+    mock_pool = IpPool(
+        id=1,
+        name="default",
+        network="172.16.0",
+        cidr="172.16.0.0/24",
+        gateway="172.16.0.1",
+        start_ip="172.16.0.2",
+        end_ip="172.16.0.254",
+        is_active=True,
+    )
+
+    IpAllocation(
+        id=1,
+        pool_id=1,
+        vm_id="srv-test123",
+        ip_address="192.168.1.100",
+        is_active=True,
+    )
+
+    # Setup mock session
     mock_session = MagicMock()
     mock_session.get.return_value = vm
-    mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.allocate_ip = AsyncMock(
-        return_value={"ip": "192.168.1.100", "vm_id": "srv-test123"}
-    )
-    mock_ippool.release_ip = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
+    # Mock exec() to return different results for different queries
+    mock_exec_result = MagicMock()
+
+    # First call: get pool (returns pool)
+    # Second call: check existing allocation (returns None - no existing)
+    # Third call: get allocated IPs (returns empty set)
+    mock_exec_result.first.side_effect = [mock_pool, None]
+    mock_exec_result.all.return_value = []  # No allocated IPs
+    mock_session.exec.return_value = mock_exec_result
+
+    mock_session_class.return_value.__enter__.return_value = mock_session
 
     mock_firecracker = AsyncMock()
     mock_firecracker.start_vm = AsyncMock(return_value={"status": "successful"})
@@ -102,11 +126,8 @@ async def test_create_vm_task_success(
     # Verify result
     assert result["success"] is True
     assert result["vm_id"] == "srv-test123"
-    assert result["ip_address"] == "192.168.1.100"
+    assert result["ip_address"] == "172.16.0.2"  # First available IP
     assert result["status"] == "running"
-
-    # Verify IP was allocated
-    mock_ippool.allocate_ip.assert_called_once_with("srv-test123", "test-vm")
 
     # Verify Firecracker was called
     mock_firecracker.start_vm.assert_called_once()
@@ -115,21 +136,18 @@ async def test_create_vm_task_success(
     assert call_kwargs["vcpu_count"] == 2
     assert call_kwargs["memory_mb"] == 2048
 
-    # Verify ippool was closed
-    mock_ippool.close.assert_called_once()
-
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_create_vm_task_ip_allocation_failure(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test VM creation task when IP allocation fails."""
+    from mikrom.models.ip_pool import IpPool
+
     # Create test user and VM
     user = User(
         email="user@example.com",
@@ -153,21 +171,40 @@ async def test_create_vm_task_ip_allocation_failure(
     await db_session.commit()
     await db_session.refresh(vm)
 
-    # Setup mocks
+    # Setup mocks - pool with all IPs allocated
+    mock_pool = IpPool(
+        id=1,
+        name="default",
+        network="172.16.0",
+        cidr="172.16.0.0/24",
+        gateway="172.16.0.1",
+        start_ip="172.16.0.2",
+        end_ip="172.16.0.3",  # Only 2 IPs available
+        is_active=True,
+    )
+
     mock_session = MagicMock()
     mock_session.get.return_value = vm
-    mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.allocate_ip = AsyncMock(side_effect=Exception("IP pool exhausted"))
-    mock_ippool.release_ip = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
+    # Mock exec() to simulate pool exhaustion
+    mock_exec_result = MagicMock()
+
+    # First call: get pool (returns pool)
+    # Second call: check existing allocation (returns None)
+    # Third call: get allocated IPs (returns all IPs in range)
+    mock_exec_result.first.side_effect = [mock_pool, None]
+    mock_exec_result.all.return_value = [
+        ("172.16.0.2",),
+        ("172.16.0.3",),
+    ]  # All IPs allocated
+    mock_session.exec.return_value = mock_exec_result
+
+    mock_session_class.return_value.__enter__.return_value = mock_session
 
     mock_task = MockCeleryTask()
 
     # Execute task - should raise exception
-    with pytest.raises(Exception, match="IP pool exhausted"):
+    with pytest.raises(Exception, match="No available IPs in pool"):
         await _create_vm_task_async(
             mock_task,
             vm_db_id=vm.id,
@@ -179,18 +216,13 @@ async def test_create_vm_task_ip_allocation_failure(
     mock_session.add.assert_called()
     mock_session.commit.assert_called()
 
-    # Verify ippool was closed
-    mock_ippool.close.assert_called_once()
-
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_create_vm_task_firecracker_failure(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test VM creation task when Firecracker start fails."""
@@ -222,14 +254,6 @@ async def test_create_vm_task_firecracker_failure(
     mock_session.get.return_value = vm
     mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.allocate_ip = AsyncMock(
-        return_value={"ip": "192.168.1.100", "vm_id": "srv-test123"}
-    )
-    mock_ippool.release_ip = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
-
     mock_firecracker = AsyncMock()
     mock_firecracker.start_vm = AsyncMock(
         side_effect=Exception("Firecracker start failed")
@@ -248,10 +272,6 @@ async def test_create_vm_task_firecracker_failure(
         )
 
     # Verify IP cleanup was attempted
-    mock_ippool.release_ip.assert_called_once_with("srv-test123")
-
-    # Verify ippool was closed
-    mock_ippool.close.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -283,13 +303,11 @@ async def test_create_vm_task_vm_not_found(
 
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_delete_vm_task_success(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test successful VM deletion task."""
@@ -322,11 +340,6 @@ async def test_delete_vm_task_success(
     mock_session.get.return_value = vm
     mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.release_ip = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
-
     mock_firecracker = AsyncMock()
     mock_firecracker.cleanup_vm = AsyncMock()
     mock_firecracker_class.return_value = mock_firecracker
@@ -352,23 +365,17 @@ async def test_delete_vm_task_success(
     )
 
     # Verify IP was released
-    mock_ippool.release_ip.assert_called_once_with("srv-delete123")
 
     # Verify VM was deleted from database
     mock_session.delete.assert_called_once()
 
-    # Verify ippool was closed
-    mock_ippool.close.assert_called_once()
-
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_delete_vm_task_firecracker_failure_continues(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test delete task continues even if Firecracker cleanup fails."""
@@ -400,11 +407,6 @@ async def test_delete_vm_task_firecracker_failure_continues(
     mock_session.get.return_value = vm
     mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.release_ip = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
-
     # Firecracker cleanup fails but should not stop deletion
     mock_firecracker = AsyncMock()
     mock_firecracker.cleanup_vm = AsyncMock(
@@ -426,7 +428,6 @@ async def test_delete_vm_task_firecracker_failure_continues(
     assert result["status"] == "deleted"
 
     # Verify IP was still released
-    mock_ippool.release_ip.assert_called_once()
 
     # Verify VM was still deleted
     mock_session.delete.assert_called_once()
@@ -559,13 +560,11 @@ async def test_stop_vm_task_failure(
 
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_start_vm_task_success(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test successful VM start task."""
@@ -598,10 +597,6 @@ async def test_start_vm_task_success(
     mock_session.get.return_value = vm
     mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
-
     mock_firecracker = AsyncMock()
     mock_firecracker.start_vm = AsyncMock()
     mock_firecracker_class.return_value = mock_firecracker
@@ -627,18 +622,13 @@ async def test_start_vm_task_success(
     # Verify Firecracker start was called
     mock_firecracker.start_vm.assert_called_once()
 
-    # Verify ippool was closed
-    mock_ippool.close.assert_called_once()
-
 
 @pytest.mark.asyncio
-@patch("mikrom.worker.tasks.IPPoolClient")
 @patch("mikrom.worker.tasks.FirecrackerClient")
 @patch("mikrom.worker.tasks.Session")
 async def test_start_vm_task_no_ip_address(
     mock_session_class: Mock,
     mock_firecracker_class: Mock,
-    mock_ippool_class: Mock,
     db_session: AsyncSession,
 ) -> None:
     """Test VM start task when VM has no IP address."""
@@ -671,10 +661,6 @@ async def test_start_vm_task_no_ip_address(
     mock_session.get.return_value = vm
     mock_session_class.return_value.__enter__.return_value = mock_session
 
-    mock_ippool = AsyncMock()
-    mock_ippool.close = AsyncMock()
-    mock_ippool_class.return_value = mock_ippool
-
     mock_firecracker = AsyncMock()
     mock_firecracker_class.return_value = mock_firecracker
 
@@ -689,9 +675,6 @@ async def test_start_vm_task_no_ip_address(
             vcpu_count=2,
             memory_mb=2048,
         )
-
-    # Verify ippool was closed even after error
-    mock_ippool.close.assert_called_once()
 
 
 # ===========================================

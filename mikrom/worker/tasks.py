@@ -2,18 +2,22 @@
 
 import asyncio
 from typing import Optional
-from sqlmodel import Session
+from datetime import datetime, UTC
+from sqlmodel import Session, select, and_
 from celery.exceptions import SoftTimeLimitExceeded
 
 from mikrom.celery_app import celery_app
 from mikrom.database import sync_engine
-from mikrom.models import VM
-from mikrom.clients.ippool import IPPoolClient
+from mikrom.models import VM, IpPool, IpAllocation
+from mikrom.services.ippool_service import (
+    IPPoolService,
+)  # Direct import to avoid circular dependency
 from mikrom.clients.firecracker import FirecrackerClient
 from mikrom.events.publisher import EventPublisher
 from mikrom.utils.logger import get_logger, log_timer
 from mikrom.utils.context import set_context
 from mikrom.utils.telemetry import get_tracer, add_span_attributes, add_span_event
+from mikrom.config import settings
 
 logger = get_logger(__name__)
 tracer = get_tracer()
@@ -103,7 +107,7 @@ async def _create_vm_task_async(
             },
         )
 
-        ippool = IPPoolClient()
+        IPPoolService()
         firecracker = FirecrackerClient()
 
         try:
@@ -113,8 +117,87 @@ async def _create_vm_task_async(
                 log_timer("allocate_ip", logger),
             ):
                 logger.info("Allocating IP address")
-                ip_info = await ippool.allocate_ip(vm_id, vm_name)
-                ip_address = ip_info["ip"]
+                # Allocate IP using sync session
+                with Session(sync_engine) as db_session:
+                    # Get pool
+                    pool = db_session.exec(
+                        select(IpPool).where(
+                            and_(
+                                IpPool.name == settings.IPPOOL_DEFAULT_POOL_NAME,
+                                IpPool.is_active,
+                            )
+                        )
+                    ).first()
+
+                    if not pool:
+                        raise ValueError(
+                            f"IP pool '{settings.IPPOOL_DEFAULT_POOL_NAME}' not found"
+                        )
+
+                    # Check if VM already has active allocation (idempotent)
+                    existing = db_session.exec(
+                        select(IpAllocation).where(
+                            and_(
+                                IpAllocation.vm_id == vm_id,
+                                IpAllocation.is_active,
+                            )
+                        )
+                    ).first()
+
+                    if existing:
+                        logger.info(
+                            "VM already has active IP allocation",
+                            extra={"ip": existing.ip_address},
+                        )
+                        ip_address = existing.ip_address
+                    else:
+                        # Find first available IP
+                        from mikrom.services.ippool_service import (
+                            _ip_to_int,
+                            _int_to_ip,
+                        )
+
+                        start_int = _ip_to_int(pool.start_ip)
+                        end_int = _ip_to_int(pool.end_ip)
+
+                        # Get all allocated IPs
+                        allocated_ips = {
+                            row[0]
+                            for row in db_session.exec(
+                                select(IpAllocation.ip_address).where(
+                                    and_(
+                                        IpAllocation.pool_id == pool.id,
+                                        IpAllocation.is_active,
+                                    )
+                                )
+                            ).all()
+                        }
+
+                        # Find first available
+                        available_ip = None
+                        for ip_int in range(start_int, end_int + 1):
+                            ip_str = _int_to_ip(ip_int)
+                            if ip_str not in allocated_ips:
+                                available_ip = ip_str
+                                break
+
+                        if not available_ip:
+                            raise ValueError(
+                                f"No available IPs in pool '{settings.IPPOOL_DEFAULT_POOL_NAME}'"
+                            )
+
+                        # Create allocation
+                        allocation = IpAllocation(
+                            pool_id=pool.id,
+                            vm_id=vm_id,
+                            ip_address=available_ip,
+                            is_active=True,
+                            allocated_at=datetime.now(UTC),
+                        )
+                        db_session.add(allocation)
+                        db_session.commit()
+                        ip_address = available_ip
+                        logger.info("New IP allocated", extra={"ip": ip_address})
 
                 add_span_event("ip_allocated", {"ip": ip_address})
                 logger.info("IP allocated successfully", extra={"ip": ip_address})
@@ -232,7 +315,20 @@ async def _create_vm_task_async(
             try:
                 if vm_id:
                     logger.info("Attempting to cleanup IP allocation after timeout")
-                    await ippool.release_ip(vm_id)
+                    with Session(sync_engine) as db_session:
+                        allocation = db_session.exec(
+                            select(IpAllocation).where(
+                                and_(
+                                    IpAllocation.vm_id == vm_id,
+                                    IpAllocation.is_active,
+                                )
+                            )
+                        ).first()
+                        if allocation:
+                            allocation.is_active = False
+                            allocation.released_at = datetime.utcnow()
+                            db_session.add(allocation)
+                            db_session.commit()
             except Exception as cleanup_error:
                 logger.error(
                     "IP cleanup failed after timeout",
@@ -278,7 +374,20 @@ async def _create_vm_task_async(
             try:
                 if vm_id:
                     logger.info("Attempting to cleanup IP allocation")
-                    await ippool.release_ip(vm_id)
+                    with Session(sync_engine) as db_session:
+                        allocation = db_session.exec(
+                            select(IpAllocation).where(
+                                and_(
+                                    IpAllocation.vm_id == vm_id,
+                                    IpAllocation.is_active,
+                                )
+                            )
+                        ).first()
+                        if allocation:
+                            allocation.is_active = False
+                            allocation.released_at = datetime.now(UTC)
+                            db_session.add(allocation)
+                            db_session.commit()
                     logger.info("IP cleanup successful")
             except Exception as cleanup_error:
                 logger.error(
@@ -292,7 +401,8 @@ async def _create_vm_task_async(
             raise
 
         finally:
-            await ippool.close()
+            # No more cleanup needed for ippool (no client to close)
+            pass
 
 
 @celery_app.task(name="create_vm_task", bind=True, max_retries=3)
@@ -338,7 +448,7 @@ async def _delete_vm_task_async(
             extra={"vm_db_id": vm_db_id, "host": host},
         )
 
-        ippool = IPPoolClient()
+        IPPoolService()
         firecracker = FirecrackerClient()
 
         try:
@@ -375,7 +485,20 @@ async def _delete_vm_task_async(
             ):
                 logger.info("Releasing IP address")
                 try:
-                    await ippool.release_ip(vm_id)
+                    with Session(sync_engine) as db_session:
+                        allocation = db_session.exec(
+                            select(IpAllocation).where(
+                                and_(
+                                    IpAllocation.vm_id == vm_id,
+                                    IpAllocation.is_active,
+                                )
+                            )
+                        ).first()
+                        if allocation:
+                            allocation.is_active = False
+                            allocation.released_at = datetime.now(UTC)
+                            db_session.add(allocation)
+                            db_session.commit()
                     add_span_event("ip_released")
                     logger.info("IP released successfully")
                 except Exception as e:
@@ -419,7 +542,8 @@ async def _delete_vm_task_async(
             raise
 
         finally:
-            await ippool.close()
+            # No more cleanup needed for ippool (no client to close)
+            pass
 
 
 @celery_app.task(name="delete_vm_task", bind=True, max_retries=3)
@@ -546,7 +670,6 @@ async def _start_vm_task_async(
         )
 
         firecracker = FirecrackerClient()
-        ippool = IPPoolClient()
 
         try:
             # Get VM IP from database
@@ -613,7 +736,8 @@ async def _start_vm_task_async(
             raise
 
         finally:
-            await ippool.close()
+            # No more cleanup needed
+            pass
 
 
 @celery_app.task(name="start_vm_task", bind=True, max_retries=3)

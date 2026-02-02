@@ -90,8 +90,8 @@ def create_superuser():
             print(f"  Username:    {user.username}")
             print(f"  Email:       {user.email}")
             print(f"  Full Name:   {user.full_name or 'N/A'}")
-            print(f"  Superuser:   ✓ True")
-            print(f"  Active:      ✓ True")
+            print("  Superuser:   ✓ True")
+            print("  Active:      ✓ True")
             print("=" * 60 + "\n")
 
     except Exception as e:

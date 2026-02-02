@@ -1,11 +1,12 @@
 """Pytest configuration and fixtures."""
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Generator
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlmodel import SQLModel
+from sqlalchemy import create_engine
+from sqlmodel import SQLModel, Session
 from opentelemetry import trace
 
 from mikrom.main import app
@@ -19,6 +20,9 @@ from mikrom.core.security import get_password_hash
 TEST_DATABASE_URL = settings.DATABASE_URL.replace(
     "/mikrom_db", "/mikrom_test_db"
 ).replace("postgresql://", "postgresql+asyncpg://")
+
+# Sync database URL for sync tests
+TEST_DATABASE_URL_SYNC = settings.DATABASE_URL.replace("/mikrom_db", "/mikrom_test_db")
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -73,6 +77,30 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+def sync_session() -> Generator[Session, None, None]:
+    """Create a sync database session for sync tests (like ippool_service tests)."""
+    # Create engine
+    engine = create_engine(
+        TEST_DATABASE_URL_SYNC,
+        echo=False,
+        pool_pre_ping=True,
+    )
+
+    # Create tables
+    SQLModel.metadata.create_all(engine)
+
+    # Create session
+    with Session(engine) as session:
+        yield session
+
+    # Drop tables
+    SQLModel.metadata.drop_all(engine)
+
+    # Dispose engine
+    engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")

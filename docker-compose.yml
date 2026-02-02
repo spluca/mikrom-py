@@ -46,19 +46,6 @@ services:
     environment:
       ADMINER_DEFAULT_SERVER: db
 
-  ippool:
-    image: ippool:latest
-    container_name: mikrom_ippool
-    ports:
-      - "8090:8090"
-    networks:
-      - mikrom_network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8090/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   app:
     build:
       context: .
@@ -94,8 +81,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ippool:
-        condition: service_started
     networks:
       - mikrom_network
     extra_hosts:

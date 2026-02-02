@@ -20,8 +20,8 @@
 - [x] __init__.py de schemas actualizado
 
 ### Fase 4: Clientes ✅
-- [x] IPPoolClient creado (mikrom/clients/ippool.py)
 - [x] FirecrackerClient creado (mikrom/clients/firecracker.py)
+- [x] IPPoolService creado (mikrom/services/ippool_service.py) - Interno en PostgreSQL
 
 ### Fase 5: Background Tasks ✅  
 - [x] Worker tasks creados (mikrom/worker/tasks.py)

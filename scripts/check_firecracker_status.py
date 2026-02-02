@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import select
 from mikrom.config import settings
 from mikrom.models import VM
-from mikrom.services.vm_service import VMService
 
 
 async def main():
@@ -43,7 +42,7 @@ async def main():
     await engine.dispose()
 
     # Check for Firecracker processes
-    print(f"\n🔍 Buscando procesos de Firecracker...")
+    print("\n🔍 Buscando procesos de Firecracker...")
     try:
         result = subprocess.run(["ps", "aux"], capture_output=True, text=True)
 
@@ -68,7 +67,7 @@ async def main():
         print(f"\n❌ Error al buscar procesos: {e}")
 
     # Check firecracker-deploy directory
-    print(f"\n📁 Verificando directorio firecracker-deploy...")
+    print("\n📁 Verificando directorio firecracker-deploy...")
     try:
         result = subprocess.run(
             ["ls", "-la", "/home/apardo/Work/mikrom/new/firecracker-deploy/vms/"],

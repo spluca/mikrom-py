@@ -2,7 +2,6 @@
 
 import os
 import shutil
-import subprocess
 
 
 def main():
@@ -56,7 +55,7 @@ def main():
             error_count += 1
             print(f"   ✗ Error eliminando {vm_dir}: {e}")
 
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print("RESUMEN DE LIMPIEZA")
     print("=" * 70)
     print(f"  Directorios procesados: {len(vm_dirs)}")
@@ -74,7 +73,7 @@ def main():
     if remaining:
         print(f"\n⚠️  Aún quedan {len(remaining)} directorios")
     else:
-        print(f"\n✅ Todos los directorios han sido eliminados")
+        print("\n✅ Todos los directorios han sido eliminados")
 
 
 if __name__ == "__main__":

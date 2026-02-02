@@ -97,9 +97,9 @@ LOG_FORMAT: str = "json"              # "json" or "text"
 - **Summary statistics** (total tasks, ok, changed, failed)
 - **Duration tracking**
 
-#### `mikrom/clients/ippool.py`
-- **API call logging** (allocate, release)
-- **Request/Response logging**
+#### `mikrom/services/ippool_service.py`
+- **IP allocation/release logging** (internal service)
+- **Database operation logging**
 - **Error handling** with detailed context
 
 ---
@@ -131,9 +131,9 @@ LOG_FORMAT: str = "json"              # "json" or "text"
 ✅ mikrom.middleware.logging  - HTTP request/response logs (100%)
 ⚠️  mikrom.api.v1.endpoints.vms - Requires authentication (not tested)
 ⚠️  mikrom.services.vm_service  - Requires full workflow (not tested)
+⚠️  mikrom.services.ippool_service - Internal IP pool service (tested separately)
 ⚠️  mikrom.worker.tasks         - Requires background job (not tested)
 ⚠️  mikrom.clients.firecracker  - Requires Ansible execution (not tested)
-⚠️  mikrom.clients.ippool       - Requires IP allocation (not tested)
 ```
 
 #### 3. Example Log Output ✅
@@ -188,7 +188,7 @@ To test the complete logging system, we need to run a full VM creation workflow:
 **Required Setup:**
 - Authentication credentials (user account)
 - Firecracker environment configured
-- IP pool service accessible
+- IP pool configured in database
 - Worker process running
 
 **What to Test:**
@@ -196,7 +196,7 @@ To test the complete logging system, we need to run a full VM creation workflow:
    - `mikrom.api.v1.endpoints.vms` (API layer)
    - `mikrom.services.vm_service` (Service layer)
    - `mikrom.worker.tasks` (Background task)
-   - `mikrom.clients.ippool` (IP allocation)
+   - `mikrom.services.ippool_service` (IP allocation - internal)
    - `mikrom.clients.firecracker` (VM provisioning)
 
 2. **Context Propagation** → Verify `vm_id` flows through all logs
@@ -235,7 +235,8 @@ The worker tasks have comprehensive step-by-step logging, but we need to verify:
 | VM lifecycle operations logged | ⏸️ Untested | Requires auth and full workflow |
 | Background task logging works | ⏸️ Untested | Code ready but not executed |
 | Context propagates to worker | ⏸️ Untested | Need to run actual job |
-| Client logging works | ⏸️ Untested | IP pool and Firecracker not called |
+| Client logging works | ⏸️ Untested | Firecracker client not called |
+| IP Pool service logging | ✅ Tested | Internal service fully tested |
 
 **Overall Progress: 5/9 Fully Tested (55.6%)**
 
@@ -253,9 +254,9 @@ The worker tasks have comprehensive step-by-step logging, but we need to verify:
 3. **`mikrom/main.py`** - Initialize telemetry on startup
 4. **`mikrom/api/v1/endpoints/vms.py`** - Add spans and structured logs
 5. **`mikrom/services/vm_service.py`** - Instrument service operations
-6. **`mikrom/worker/tasks.py`** - Complete rewrite with detailed logging
-7. **`mikrom/clients/firecracker.py`** - Enhanced playbook logging
-8. **`mikrom/clients/ippool.py`** - API call logging with tracing
+6. **`mikrom/services/ippool_service.py`** - IP pool management (internal)
+7. **`mikrom/worker/tasks.py`** - Complete rewrite with detailed logging
+8. **`mikrom/clients/firecracker.py`** - Enhanced playbook logging
 9. **`mikrom/config.py`** - Add OTEL configuration
 10. **`pyproject.toml`** - Add dependencies
 11. **`uv.lock`** - Update lock file

@@ -51,8 +51,8 @@ Complete guide to set up and deploy the **mikrom-py** FastAPI application with V
                             │                       │
                             ▼                       ▼
                     ┌──────────────┐       ┌──────────────┐
-                    │   IP Pool    │       │  Firecracker │
-                    │   Service    │       │   Ansible    │
+                    │  PostgreSQL  │       │  Firecracker │
+                    │   (IP Pool)  │       │   Ansible    │
                     └──────────────┘       └──────────────┘
                                                    │
                                                    ▼
@@ -105,17 +105,12 @@ Complete guide to set up and deploy the **mikrom-py** FastAPI application with V
 
 ### Required for VM Management
 
-6. **ippool Service** (IP address management)
-   - Must be running and accessible
-   - Default: `http://localhost:8080`
-   - Repository: `../ippool`
-
-7. **firecracker-deploy** (Ansible playbooks)
+6. **firecracker-deploy** (Ansible playbooks)
    - Configured with target hosts
    - Default path: `../firecracker-deploy`
    - Repository: `../firecracker-deploy`
 
-8. **KVM Server** (for running VMs)
+7. **KVM Server** (for running VMs)
    - Linux server with KVM support
    - SSH access configured
    - Network bridge set up
@@ -213,14 +208,14 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mikrom_db
 **For VM management, also configure:**
 
 ```bash
-# IP Pool API (adjust port if needed to avoid conflicts)
-IPPOOL_API_URL=http://localhost:8090
-
 # Firecracker deployment path (absolute path!)
 FIRECRACKER_DEPLOY_PATH=/home/youruser/path/to/firecracker-deploy
 
 # Optional: specify default KVM host
 FIRECRACKER_DEFAULT_HOST=your-kvm-server.example.com
+
+# IP Pool Configuration
+IPPOOL_DEFAULT_POOL_NAME=default
 
 # Redis (default works with Docker)
 REDIS_URL=redis://localhost:6379
@@ -367,7 +362,7 @@ with Session(sync_engine) as session:
 | **Logging** |
 | `LOG_LEVEL` | Log level (DEBUG/INFO/WARNING/ERROR) | `INFO` | ❌ |
 | **VM Management** |
-| `IPPOOL_API_URL` | IP Pool service URL | `http://localhost:8080` | ⚠️ * |
+| `IPPOOL_DEFAULT_POOL_NAME` | Default IP pool name | `default` | ❌ |
 | `FIRECRACKER_DEPLOY_PATH` | Path to firecracker-deploy repo | - | ⚠️ * |
 | `FIRECRACKER_DEFAULT_HOST` | Default KVM host (optional) | - | ❌ |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` | ⚠️ * |
@@ -418,8 +413,8 @@ DATABASE_URL=postgresql://user:password@/database?host=/var/run/postgresql
 
 **Configure IP Pool:**
 ```bash
-# If ippool runs on different port to avoid Adminer conflict
-IPPOOL_API_URL=http://localhost:8090
+# Default IP pool name (must exist in database)
+IPPOOL_DEFAULT_POOL_NAME=default
 ```
 
 **Configure Firecracker deployment:**
@@ -609,13 +604,19 @@ make info          # Show project info
 
 ### Prerequisites for VM Management
 
-Before creating VMs, ensure these external services are running:
+Before creating VMs, ensure these services are configured:
 
-1. **IP Pool Service**
+1. **IP Pool in Database**
    ```bash
-   cd ../ippool
-   # Start ippool service (refer to ippool documentation)
-   # Ensure it's accessible at http://localhost:8090
+   # Connect to database
+   docker compose exec db psql -U postgres -d mikrom_db
+   
+   # Check if IP pool exists
+   SELECT * FROM ip_pools;
+   
+   # Create default pool if needed (example)
+   INSERT INTO ip_pools (name, cidr, gateway, start_ip, end_ip, is_active) 
+   VALUES ('default', '192.168.1.0/24', '192.168.1.1', '192.168.1.10', '192.168.1.250', true);
    ```
 
 2. **Firecracker Deploy**
@@ -1275,8 +1276,8 @@ uv run alembic upgrade head
 
 **Check list:**
 ```bash
-# 1. Check if ippool is running
-curl http://localhost:8090/health
+# 1. Check IP pool in database
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT * FROM ip_pools WHERE is_active = true;"
 
 # 2. Check firecracker-deploy path
 ls -la $FIRECRACKER_DEPLOY_PATH
@@ -1292,7 +1293,7 @@ cd $FIRECRACKER_DEPLOY_PATH
 ansible-playbook playbooks/create-vm.yml -e "vm_id=test-vm vcpu=1 mem=256"
 
 # 6. Check IP pool has available IPs
-curl http://localhost:8090/api/v1/pools
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT * FROM ip_allocations WHERE is_active = true;"
 ```
 
 #### 6. "Port already in use"
@@ -1415,9 +1416,9 @@ print(f'Redis ping: {r.ping()}')
 "
 ```
 
-**Test IP Pool connection:**
+**Test IP Pool in database:**
 ```bash
-curl -v http://localhost:8090/api/v1/health
+docker compose exec db psql -U postgres -d mikrom_db -c "SELECT name, cidr, COUNT(ip_allocations.id) as allocated FROM ip_pools LEFT JOIN ip_allocations ON ip_pools.id = ip_allocations.pool_id AND ip_allocations.is_active = true GROUP BY ip_pools.id;"
 ```
 
 **Test Ansible connectivity:**
@@ -1463,7 +1464,8 @@ ansible all -m ping -i inventory/hosts.yml
 - [ ] Environment variables are configured
 - [ ] Worker is running
 - [ ] Email service configured (if using)
-- [ ] External services are accessible (ippool, firecracker-deploy)
+- [ ] IP pools configured in database
+- [ ] firecracker-deploy repository accessible
 - [ ] SSH keys for KVM servers are set up
 - [ ] Test VM creation works end-to-end
 - [ ] Documentation is up to date
