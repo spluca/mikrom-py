@@ -103,7 +103,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - /home/apardo/Work/mikrom/new/firecracker-deploy:/firecracker-deploy:ro
-      - ~/.ssh:/root/.ssh:ro
+      - ~/.ssh:/home/appuser/.ssh:ro
     healthcheck:
       test: ["CMD-SHELL", "celery -A mikrom.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
       interval: 30s
