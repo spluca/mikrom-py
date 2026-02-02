@@ -8,7 +8,8 @@ __pycache__/
 venv/
 ENV/
 env/
-.env
+.env.local
+.env.*.local
 
 # IDEs
 .vscode/
@@ -22,6 +23,8 @@ env/
 .coverage
 htmlcov/
 .tox/
+tests/
+*.test.py
 
 # Build
 build/
@@ -31,15 +34,33 @@ dist/
 # Git
 .git/
 .gitignore
+.gitattributes
 
 # Docker
-Dockerfile
-docker-compose.yml
+Dockerfile*
+docker-compose*.yml
 .dockerignore
 
 # Documentation
-README.md
+docs/
 *.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Development scripts
+scripts/dev/
+scripts/local/
 
 # Alembic
 alembic/versions/*.pyc

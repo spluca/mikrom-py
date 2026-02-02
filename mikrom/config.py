@@ -54,9 +54,13 @@ class Settings(BaseSettings):
     OTEL_TRACE_SAMPLE_RATE: float = 1.0  # 1.0 = 100% sampling
     OTEL_EXPORT_CONSOLE: bool = True
 
-    # Redis/arq configuration
+    # Redis/Celery configuration
     REDIS_URL: str = "redis://localhost:6379"
-    ARQ_QUEUE_NAME: str = "mikrom:queue"
+    CELERY_QUEUE_NAME: str = "mikrom:queue"
+
+    # Flower monitoring
+    FLOWER_BASIC_AUTH: str = "admin:changeme"
+    FLOWER_PORT: int = 5555
 
     # IP Pool configuration
     IPPOOL_API_URL: str = "http://localhost:8090"

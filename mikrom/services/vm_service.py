@@ -4,15 +4,19 @@ import secrets
 from typing import Optional, List
 from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from arq import create_pool
-from arq.connections import ArqRedis
 
 from mikrom.models import VM, User, VMStatus
 from mikrom.config import settings
 from mikrom.utils.logger import get_logger
 from mikrom.utils.context import set_context
 from mikrom.utils.telemetry import get_tracer, add_span_attributes
-from mikrom.worker.settings import get_redis_settings
+from mikrom.worker.tasks import (
+    create_vm_task,
+    delete_vm_task,
+    stop_vm_task,
+    start_vm_task,
+    restart_vm_task,
+)
 
 logger = get_logger(__name__)
 tracer = get_tracer()
@@ -23,17 +27,7 @@ class VMService:
 
     def __init__(self):
         """Initialize service."""
-        self._redis: Optional[ArqRedis] = None
-
-    async def get_redis_pool(self) -> ArqRedis:
-        """Get or create Redis pool for arq."""
-        if self._redis is None:
-            from mikrom.config import settings as app_settings
-
-            self._redis = await create_pool(
-                get_redis_settings(), default_queue_name=app_settings.ARQ_QUEUE_NAME
-            )
-        return self._redis
+        pass
 
     def generate_vm_id(self) -> str:
         """Generate unique VM ID."""
@@ -122,9 +116,7 @@ class VMService:
             with tracer.start_as_current_span("service.vm.create.queue_job"):
                 logger.info("Queueing VM creation background job")
 
-                redis = await self.get_redis_pool()
-                job = await redis.enqueue_job(
-                    "create_vm_task",
+                result = create_vm_task.delay(
                     vm.id,
                     vcpu_count,
                     memory_mb,
@@ -132,10 +124,7 @@ class VMService:
                     settings.FIRECRACKER_DEFAULT_HOST,
                 )
 
-                if job:
-                    logger.info("VM creation job queued", extra={"job_id": job.job_id})
-                else:
-                    logger.warning("Job enqueued but no job ID returned")
+                logger.info("VM creation job queued", extra={"job_id": result.id})
 
             return vm
 
@@ -229,28 +218,21 @@ class VMService:
 
             # Queue background task
             with tracer.start_as_current_span("service.vm.delete.queue_job"):
-                redis = await self.get_redis_pool()
-                job = await redis.enqueue_job(
-                    "delete_vm_task",
+                result = delete_vm_task.delay(
                     vm.id,
                     vm.vm_id,
                     vm.host,
                 )
 
-                if job:
-                    logger.info(
-                        "VM deletion job queued",
-                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
-                    )
-                else:
-                    logger.warning(
-                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
-                    )
+                logger.info(
+                    "VM deletion job queued",
+                    extra={"job_id": result.id, "vm_id": vm.vm_id},
+                )
 
     async def close(self):
         """Close service resources."""
-        if self._redis:
-            await self._redis.close()
+        # No resources to close with Celery (it manages its own connections)
+        pass
 
     async def stop_vm(self, session: AsyncSession, vm: VM) -> None:
         """
@@ -275,23 +257,16 @@ class VMService:
 
             # Queue background task
             with tracer.start_as_current_span("service.vm.stop.queue_job"):
-                redis = await self.get_redis_pool()
-                job = await redis.enqueue_job(
-                    "stop_vm_task",
+                result = stop_vm_task.delay(
                     vm.id,
                     vm.vm_id,
                     vm.host,
                 )
 
-                if job:
-                    logger.info(
-                        "VM stop job queued",
-                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
-                    )
-                else:
-                    logger.warning(
-                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
-                    )
+                logger.info(
+                    "VM stop job queued",
+                    extra={"job_id": result.id, "vm_id": vm.vm_id},
+                )
 
     async def start_vm(self, session: AsyncSession, vm: VM) -> None:
         """
@@ -316,9 +291,7 @@ class VMService:
 
             # Queue background task
             with tracer.start_as_current_span("service.vm.start.queue_job"):
-                redis = await self.get_redis_pool()
-                job = await redis.enqueue_job(
-                    "start_vm_task",
+                result = start_vm_task.delay(
                     vm.id,
                     vm.vm_id,
                     vm.vcpu_count,
@@ -327,15 +300,10 @@ class VMService:
                     vm.host,
                 )
 
-                if job:
-                    logger.info(
-                        "VM start job queued",
-                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
-                    )
-                else:
-                    logger.warning(
-                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
-                    )
+                logger.info(
+                    "VM start job queued",
+                    extra={"job_id": result.id, "vm_id": vm.vm_id},
+                )
 
     async def restart_vm(self, session: AsyncSession, vm: VM) -> None:
         """
@@ -362,9 +330,7 @@ class VMService:
 
             # Queue restart task (will stop then start)
             with tracer.start_as_current_span("service.vm.restart.queue_job"):
-                redis = await self.get_redis_pool()
-                job = await redis.enqueue_job(
-                    "restart_vm_task",
+                result = restart_vm_task.delay(
                     vm.id,
                     vm.vm_id,
                     vm.vcpu_count,
@@ -373,12 +339,7 @@ class VMService:
                     vm.host,
                 )
 
-                if job:
-                    logger.info(
-                        "VM restart job queued",
-                        extra={"job_id": job.job_id, "vm_id": vm.vm_id},
-                    )
-                else:
-                    logger.warning(
-                        "Job enqueued but no job ID returned", extra={"vm_id": vm.vm_id}
-                    )
+                logger.info(
+                    "VM restart job queued",
+                    extra={"job_id": result.id, "vm_id": vm.vm_id},
+                )

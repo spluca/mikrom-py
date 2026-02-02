@@ -1,8 +1,10 @@
 """Background tasks for VM operations with enhanced logging and tracing."""
 
+import asyncio
 from typing import Optional
 from sqlmodel import Session
 
+from mikrom.celery_app import celery_app
 from mikrom.database import sync_engine
 from mikrom.models import VM
 from mikrom.clients.ippool import IPPoolClient
@@ -15,8 +17,9 @@ logger = get_logger(__name__)
 tracer = get_tracer()
 
 
-async def create_vm_task(
-    ctx: dict,
+# Wrapper interno para convertir funciones async a sync para Celery
+async def _create_vm_task_async(
+    self,
     vm_db_id: int,
     vcpu_count: int,
     memory_mb: int,
@@ -27,7 +30,7 @@ async def create_vm_task(
     Background task to create and start a VM.
 
     Args:
-        ctx: arq context
+        self: Celery task instance
         vm_db_id: Database ID of VM record
         vcpu_count: Number of vCPUs
         memory_mb: Memory in MB
@@ -38,6 +41,9 @@ async def create_vm_task(
         dict with results
     """
     with tracer.start_as_current_span("background.create_vm") as span:
+        # Add Celery task ID to span
+        add_span_attributes(**{"celery.task_id": self.request.id})
+
         # Get VM info from database
         with Session(sync_engine) as session:
             vm = session.get(VM, vm_db_id)
@@ -187,14 +193,29 @@ async def create_vm_task(
             await ippool.close()
 
 
-async def delete_vm_task(
-    ctx: dict, vm_db_id: int, vm_id: str, host: Optional[str] = None
+@celery_app.task(name="create_vm_task", bind=True, max_retries=3)
+def create_vm_task(
+    self,
+    vm_db_id: int,
+    vcpu_count: int,
+    memory_mb: int,
+    kernel_path: Optional[str] = None,
+    host: Optional[str] = None,
+) -> dict:
+    """Sync wrapper for create_vm_task that runs the async version."""
+    return asyncio.run(
+        _create_vm_task_async(self, vm_db_id, vcpu_count, memory_mb, kernel_path, host)
+    )
+
+
+async def _delete_vm_task_async(
+    self, vm_db_id: int, vm_id: str, host: Optional[str] = None
 ) -> dict:
     """
     Background task to delete a VM.
 
     Args:
-        ctx: arq context
+        self: Celery task instance
         vm_db_id: Database ID of VM record
         vm_id: Firecracker VM ID
         host: Optional target host
@@ -203,6 +224,9 @@ async def delete_vm_task(
         dict with results
     """
     with tracer.start_as_current_span("background.delete_vm") as span:
+        # Add Celery task ID to span
+        add_span_attributes(**{"celery.task_id": self.request.id})
+
         # Set context
         set_context(action="vm.delete.background", vm_id=vm_id)
         add_span_attributes(**{"vm.id": vm_id, "vm.db_id": vm_db_id})
@@ -296,14 +320,20 @@ async def delete_vm_task(
             await ippool.close()
 
 
-async def stop_vm_task(
-    ctx: dict, vm_db_id: int, vm_id: str, host: Optional[str] = None
+@celery_app.task(name="delete_vm_task", bind=True, max_retries=3)
+def delete_vm_task(self, vm_db_id: int, vm_id: str, host: Optional[str] = None) -> dict:
+    """Sync wrapper for delete_vm_task that runs the async version."""
+    return asyncio.run(_delete_vm_task_async(self, vm_db_id, vm_id, host))
+
+
+async def _stop_vm_task_async(
+    self, vm_db_id: int, vm_id: str, host: Optional[str] = None
 ) -> dict:
     """
     Background task to stop a VM.
 
     Args:
-        ctx: arq context
+        self: Celery task instance
         vm_db_id: Database ID of VM record
         vm_id: Firecracker VM ID
         host: Optional target host
@@ -312,6 +342,7 @@ async def stop_vm_task(
         dict with results
     """
     with tracer.start_as_current_span("background.stop_vm") as span:
+        add_span_attributes(**{"celery.task_id": self.request.id})
         set_context(action="vm.stop.background", vm_id=vm_id)
         add_span_attributes(**{"vm.id": vm_id, "vm.db_id": vm_db_id})
 
@@ -356,9 +387,7 @@ async def stop_vm_task(
         except Exception as e:
             logger.error(
                 "VM stop failed",
-                extra={
-                    "error": str(e),
-                    "error_type": type(e).__name__},
+                extra={"error": str(e), "error_type": type(e).__name__},
             )
             span.record_exception(e)
 
@@ -374,8 +403,14 @@ async def stop_vm_task(
             raise
 
 
-async def start_vm_task(
-    ctx: dict,
+@celery_app.task(name="stop_vm_task", bind=True, max_retries=3)
+def stop_vm_task(self, vm_db_id: int, vm_id: str, host: Optional[str] = None) -> dict:
+    """Sync wrapper for stop_vm_task that runs the async version."""
+    return asyncio.run(_stop_vm_task_async(self, vm_db_id, vm_id, host))
+
+
+async def _start_vm_task_async(
+    self,
     vm_db_id: int,
     vm_id: str,
     vcpu_count: int,
@@ -387,7 +422,7 @@ async def start_vm_task(
     Background task to start a VM.
 
     Args:
-        ctx: arq context
+        self: Celery task instance
         vm_db_id: Database ID of VM record
         vm_id: Firecracker VM ID
         vcpu_count: Number of vCPUs
@@ -399,6 +434,7 @@ async def start_vm_task(
         dict with results
     """
     with tracer.start_as_current_span("background.start_vm") as span:
+        add_span_attributes(**{"celery.task_id": self.request.id})
         set_context(action="vm.start.background", vm_id=vm_id)
         add_span_attributes(**{"vm.id": vm_id, "vm.db_id": vm_db_id})
 
@@ -478,8 +514,26 @@ async def start_vm_task(
             await ippool.close()
 
 
-async def restart_vm_task(
-    ctx: dict,
+@celery_app.task(name="start_vm_task", bind=True, max_retries=3)
+def start_vm_task(
+    self,
+    vm_db_id: int,
+    vm_id: str,
+    vcpu_count: int,
+    memory_mb: int,
+    kernel_path: Optional[str] = None,
+    host: Optional[str] = None,
+) -> dict:
+    """Sync wrapper for start_vm_task that runs the async version."""
+    return asyncio.run(
+        _start_vm_task_async(
+            self, vm_db_id, vm_id, vcpu_count, memory_mb, kernel_path, host
+        )
+    )
+
+
+async def _restart_vm_task_async(
+    self,
     vm_db_id: int,
     vm_id: str,
     vcpu_count: int,
@@ -491,7 +545,7 @@ async def restart_vm_task(
     Background task to restart a VM.
 
     Args:
-        ctx: arq context
+        self: Celery task instance
         vm_db_id: Database ID of VM record
         vm_id: Firecracker VM ID
         vcpu_count: Number of vCPUs
@@ -503,6 +557,7 @@ async def restart_vm_task(
         dict with results
     """
     with tracer.start_as_current_span("background.restart_vm") as span:
+        add_span_attributes(**{"celery.task_id": self.request.id})
         set_context(action="vm.restart.background", vm_id=vm_id)
         add_span_attributes(**{"vm.id": vm_id, "vm.db_id": vm_db_id})
 
@@ -514,16 +569,17 @@ async def restart_vm_task(
         try:
             # Step 1: Stop the VM
             logger.info("Stopping VM as part of restart")
-            await stop_vm_task(ctx, vm_db_id, vm_id, host)
+            await stop_vm_task(vm_db_id, vm_id, host)
 
             # Step 2: Wait a moment
             import asyncio
+
             await asyncio.sleep(2)
 
             # Step 3: Start the VM
             logger.info("Starting VM as part of restart")
             start_result = await start_vm_task(
-                ctx, vm_db_id, vm_id, vcpu_count, memory_mb, kernel_path, host
+                vm_db_id, vm_id, vcpu_count, memory_mb, kernel_path, host
             )
 
             logger.info("VM restarted successfully")
@@ -551,3 +607,21 @@ async def restart_vm_task(
                     session.commit()
 
             raise
+
+
+@celery_app.task(name="restart_vm_task", bind=True, max_retries=3)
+def restart_vm_task(
+    self,
+    vm_db_id: int,
+    vm_id: str,
+    vcpu_count: int,
+    memory_mb: int,
+    kernel_path: Optional[str] = None,
+    host: Optional[str] = None,
+) -> dict:
+    """Sync wrapper for restart_vm_task that runs the async version."""
+    return asyncio.run(
+        _restart_vm_task_async(
+            self, vm_db_id, vm_id, vcpu_count, memory_mb, kernel_path, host
+        )
+    )

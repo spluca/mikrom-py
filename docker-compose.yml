@@ -54,7 +54,7 @@ services:
     networks:
       - mikrom_network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/v1/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8090/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -84,7 +84,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: mikrom_worker
-    command: python run_worker.py
+    command: celery -A mikrom.celery_app worker --pool=gevent --concurrency=100 --loglevel=info
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
       REDIS_URL: redis://redis:6379
@@ -97,7 +97,7 @@ services:
       redis:
         condition: service_healthy
       ippool:
-        condition: service_healthy
+        condition: service_started
     networks:
       - mikrom_network
     extra_hosts:
@@ -105,10 +105,71 @@ services:
     volumes:
       - /home/apardo/Work/mikrom/new/firecracker-deploy:/firecracker-deploy:ro
       - ~/.ssh:/root/.ssh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A mikrom.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mikrom_beat
+    command: celery -A mikrom.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
+      REDIS_URL: redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mikrom_network
+    volumes:
+      - celerybeat_schedule:/app
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat-schedule || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mikrom_flower
+    command: celery -A mikrom.celery_app flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH}
+    ports:
+      - "5555:5555"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/mikrom_db
+      REDIS_URL: redis://redis:6379
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH}
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mikrom_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:5555/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
+  celerybeat_schedule:
 
 networks:
   mikrom_network:

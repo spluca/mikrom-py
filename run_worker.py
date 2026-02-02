@@ -1,9 +1,8 @@
-"""Run arq worker for background tasks."""
+#!/usr/bin/env python
+"""Celery worker entry point with gevent pool for async tasks."""
 
-import asyncio
 import logging
-from arq.worker import create_worker
-from mikrom.worker.settings import WorkerSettings
+from mikrom.celery_app import celery_app
 
 # Setup logging
 logging.basicConfig(
@@ -11,11 +10,14 @@ logging.basicConfig(
 )
 
 
-async def main():
-    """Run the worker."""
-    worker = create_worker(WorkerSettings)
-    await worker.main()
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Start worker with gevent pool for async support
+    celery_app.worker_main(
+        [
+            "worker",
+            "--loglevel=info",
+            "--pool=gevent",
+            "--concurrency=100",  # Gevent puede manejar muchas tareas concurrentes
+            "--max-tasks-per-child=1000",
+        ]
+    )

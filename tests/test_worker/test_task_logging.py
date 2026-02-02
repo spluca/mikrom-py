@@ -65,7 +65,7 @@ class TestCreateVMTaskLogging:
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task
-        result = await create_vm_task(ctx={}, vm_db_id=1, vcpu_count=2, memory_mb=2048)
+        result = await create_vm_task(vm_db_id=1, vcpu_count=2, memory_mb=2048)
 
         # Parse logs
         output = stream.getvalue()
@@ -128,7 +128,7 @@ class TestCreateVMTaskLogging:
 
         # Execute task (should raise exception)
         with pytest.raises(Exception, match="IP allocation failed"):
-            await create_vm_task(ctx={}, vm_db_id=2, vcpu_count=2, memory_mb=2048)
+            await create_vm_task(vm_db_id=2, vcpu_count=2, memory_mb=2048)
 
         # Parse logs
         output = stream.getvalue()
@@ -201,7 +201,7 @@ class TestDeleteVMTaskLogging:
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task
-        result = await delete_vm_task(ctx={}, vm_db_id=10, vm_id="srv-delete123")
+        result = await delete_vm_task(vm_db_id=10, vm_id="srv-delete123")
 
         # Parse logs
         output = stream.getvalue()
@@ -270,7 +270,7 @@ class TestDeleteVMTaskLogging:
         mock_fc_client.return_value = mock_fc_instance
 
         # Execute task (should still succeed)
-        result = await delete_vm_task(ctx={}, vm_db_id=11, vm_id="srv-partial123")
+        result = await delete_vm_task(vm_db_id=11, vm_id="srv-partial123")
 
         # Parse logs
         output = stream.getvalue()
