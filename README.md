@@ -1,5 +1,7 @@
 # Mikrom API
 
+## THIS PROJECT IS ABANDONED
+
 Modern REST API built with **FastAPI**, **SQLModel**, **PostgreSQL**, and managed with **uv**.
 
 ## Features
